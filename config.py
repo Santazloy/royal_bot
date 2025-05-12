@@ -12,6 +12,11 @@ PGUSER = os.getenv("PGUSER")
 PGPASSWORD = os.getenv("PGPASSWORD")
 PGDATABASE = os.getenv("PGDATABASE")
 DATABASE_URL = os.getenv("DATABASE_URL")
+FFMPEG_CMD = os.getenv("FFMPEG_PATH", "ffmpeg")
+GROUP_IDS = [
+    -1002503654146,
+    -1002569987326
+]
 
 ADMIN_IDS = []
 _admins_str = os.getenv("ADMIN_IDS")

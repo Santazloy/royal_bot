@@ -1,3 +1,4 @@
+# handlers/startemoji.py
 import logging
 from aiogram import Router, F, Bot
 from aiogram.types import (
@@ -8,14 +9,16 @@ from aiogram.types import (
 )
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 
-import db  # здесь db.db_pool будет использоваться
+import db  # предположим, что db.db_pool уже есть
+
 logger = logging.getLogger(__name__)
 
-# Список админов (подставьте свои ID)
+# Администраторы:
 ADMIN_IDS = [7894353415, 7935161063, 1768520583]
 
-# Набор доступных эмоджи
+# Эмоджи, которые можно назначать:
 AVAILABLE_EMOJIS = [
     "😎", "💃", "👻", "🤖", "👑", "🦁", "❤️",
     "💰", "🥇", "🍕", "🦋", "🐶", "🐱", "🦊", "🦄"
@@ -28,24 +31,21 @@ def is_user_admin(user_id: int) -> bool:
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, bot: Bot):
-    """
-    /start — проверяем, есть ли уже назначенный эмоджи.
-    Если нет, создаём запись и шлём запрос админам.
-    """
+    """Обработка /start: проверяем, есть ли эмоджи, иначе просим админов назначить."""
     user_id = message.from_user.id
 
-    # Убедимся, что db_pool не None
     if not db.db_pool:
         await message.answer("База данных не инициализирована (db_pool is None)!")
         return
 
+    # Проверяем эмоджи в user_emojis
     async with db.db_pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT emoji FROM user_emojis WHERE user_id=$1",
             user_id
         )
         if row is None:
-            # Создадим пустую запись
+            # Создадим пустую запись (user_id, '')
             await conn.execute(
                 "INSERT INTO user_emojis (user_id, emoji) VALUES ($1, '')",
                 user_id
@@ -55,13 +55,13 @@ async def cmd_start(message: Message, bot: Bot):
             emoji_val = row["emoji"] or ""
 
     if emoji_val:
-        # Эмоджи уже есть
+        # Если у пользователя уже есть эмоджи
         await message.answer(
             f"Привет! У тебя уже есть эмоджи: {emoji_val}\n"
             "Можешь пользоваться всеми командами!"
         )
     else:
-        # Нет эмоджи — сообщим пользователю и попросим админов назначить
+        # Нет эмоджи → уведомляем самого пользователя и просим админов
         await message.answer(
             "У вас пока <b>нет</b> эмоджи.\n"
             "Дождитесь, пока администратор назначит вам эмоджи.\n\n"
@@ -72,17 +72,19 @@ async def cmd_start(message: Message, bot: Bot):
 
 async def send_emoji_request_to_admins(user_id: int, bot: Bot):
     """
-    Отправляем администраторам кнопку «Назначить эмоджи для XXX».
+    Рассылает всем ADMIN_IDS кнопку «Назначить эмоджи для user_id».
     """
-    for admin_id in ADMIN_IDS:
-        # Создаём клавиатуру с одной кнопкой
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
+    # Готовим inline-клавиатуру на одну кнопку:
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[
             InlineKeyboardButton(
                 text=f"Назначить эмоджи для {user_id}",
                 callback_data=f"assign_emoji_{user_id}"
             )
-        ]])
+        ]]
+    )
 
+    for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(
                 chat_id=admin_id,
@@ -90,68 +92,77 @@ async def send_emoji_request_to_admins(user_id: int, bot: Bot):
                 reply_markup=kb
             )
         except Exception as e:
+            # Если не получилось (Forbidden, Chat not found и т.д.), просто логируем
             logger.warning(f"Не удалось отправить админу {admin_id}: {e}")
 
 @router.callback_query(F.data.startswith("assign_emoji_"))
 async def callback_assign_emoji(callback: CallbackQuery, bot: Bot):
     """
-    Кнопка «Назначить эмоджи для {user_id}». Формируем клавиатуру с выбором эмоджи.
+    Когда админ нажимает «Назначить эмоджи для {user_id}»,
+    выводим полный список эмоджи для выбора.
     """
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Вы не админ!", show_alert=True)
         return
 
-    parts = callback.data.split("_", 2)  # ["assign", "emoji", "123456789"]
+    parts = callback.data.split("_", 2)
+    # parts = ["assign", "emoji", "{user_id}"]
     if len(parts) < 3:
         await callback.answer("Некорректные данные!", show_alert=True)
         return
 
-    user_id_str = parts[2]
-    if not user_id_str.isdigit():
+    target_str = parts[2]
+    if not target_str.isdigit():
         await callback.answer("Некорректный user_id!", show_alert=True)
         return
+    target_user_id = int(target_str)
 
-    target_user_id = int(user_id_str)
-
-    # Разбиваем эмоджи на ряды по 5
+    # Формируем клавиатуру: разложим AVAILABLE_EMOJIS по рядам
     row_size = 5
     inline_kb = []
     row_buf = []
 
-    for i, emo in enumerate(AVAILABLE_EMOJIS, 1):
-        cb = f"choose_emoji_{target_user_id}_{emo}"
-        row_buf.append(InlineKeyboardButton(text=emo, callback_data=cb))
+    for i, emo in enumerate(AVAILABLE_EMOJIS, start=1):
+        cb_data = f"choose_emoji_{target_user_id}_{emo}"
+        row_buf.append(InlineKeyboardButton(text=emo, callback_data=cb_data))
         if i % row_size == 0:
             inline_kb.append(row_buf)
             row_buf = []
-
     if row_buf:
         inline_kb.append(row_buf)
 
     kb = InlineKeyboardMarkup(inline_keyboard=inline_kb)
 
-    await callback.message.edit_text(
-        text=f"Выберите эмоджи для пользователя {target_user_id}:",
-        reply_markup=kb
-    )
+    # Пробуем отредактировать сообщение
+    try:
+        await callback.message.edit_text(
+            text=f"Выберите эмоджи для пользователя {target_user_id}:",
+            reply_markup=kb
+        )
+    except TelegramBadRequest as e:
+        # Если это "message is not modified", игнорируем
+        if "message is not modified" in str(e):
+            pass
+        else:
+            raise
     await callback.answer()
 
 @router.callback_query(F.data.startswith("choose_emoji_"))
 async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
     """
-    Когда админ нажимает на конкретный эмоджи из списка.
+    Когда админ выбрал конкретный эмоджи (choose_emoji_{uid}_{emoji}).
     """
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Вы не админ!", show_alert=True)
         return
 
-    parts = callback.data.split("_", 2)  # ["choose", "emoji", "1234_😎"]
+    parts = callback.data.split("_", 2)  # ["choose", "emoji", "{uid}_{emo}"]
     if len(parts) != 3:
         await callback.answer("Ошибка формата!", show_alert=True)
         return
 
-    sub = parts[2].split("_", 1)
-    if len(sub) < 2:
+    sub = parts[2].split("_", 1)  # ["{uid}", "{emo}"]
+    if len(sub) != 2:
         await callback.answer("Ошибка данных", show_alert=True)
         return
 
@@ -162,11 +173,11 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
 
     target_user_id = int(user_id_str)
 
+    # Сохраняем в таблицу user_emojis
     if not db.db_pool:
         await callback.answer("db_pool is None!", show_alert=True)
         return
 
-    # Сохраняем в таблицу user_emojis
     async with db.db_pool.acquire() as conn:
         await conn.execute(
             """
@@ -179,12 +190,22 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
             chosen_emoji
         )
 
-    await callback.message.edit_text(
-        text=f"Пользователю {target_user_id} присвоен эмоджи: {chosen_emoji}"
-    )
+    # Пытаемся изменить сообщение
+    try:
+        await callback.message.edit_text(
+            text=(
+                f"Пользователю {target_user_id} присвоен эмоджи: {chosen_emoji}"
+            )
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
+        else:
+            raise
+
     await callback.answer("Эмоджи назначен!")
 
-    # Пытаемся уведомить самого пользователя
+    # Пытаемся уведомить пользователя (если бот может писать первым)
     try:
         await bot.send_message(
             chat_id=target_user_id,
@@ -199,7 +220,8 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
 @router.message(Command("emoji"))
 async def cmd_emoji(message: Message, bot: Bot):
     """
-    /emoji — админ может менять эмоджи любому пользователю (список user_emojis).
+    Команда /emoji: показывает всем админам список (user_id -> emoji),
+    и даёт кнопку «reassign_...» для каждого.
     """
     if not is_user_admin(message.from_user.id):
         await message.answer("Только админ может менять эмоджи.")
@@ -209,7 +231,6 @@ async def cmd_emoji(message: Message, bot: Bot):
         await message.answer("db_pool == None, нет подключения к БД!")
         return
 
-    # Загружаем пользователей
     async with db.db_pool.acquire() as conn:
         rows = await conn.fetch("SELECT user_id, emoji FROM user_emojis ORDER BY user_id")
 
@@ -217,7 +238,6 @@ async def cmd_emoji(message: Message, bot: Bot):
         await message.answer("Нет пользователей в таблице user_emojis.")
         return
 
-    # Делаем клавиатуру, каждая кнопка — отдельная строка
     inline_kb = []
     for row in rows:
         uid = row["user_id"]
@@ -232,7 +252,7 @@ async def cmd_emoji(message: Message, bot: Bot):
 @router.callback_query(F.data.startswith("reassign_"))
 async def callback_reassign_emoji(callback: CallbackQuery, bot: Bot):
     """
-    Когда админ нажимает на конкретного юзера, снова показываем полный список эмоджи.
+    Когда админ выбрал конкретного пользователя для перевыбора эмоджи.
     """
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Вы не админ!", show_alert=True)
@@ -242,15 +262,13 @@ async def callback_reassign_emoji(callback: CallbackQuery, bot: Bot):
     if not user_str.isdigit():
         await callback.answer("Некорректный user_id!", show_alert=True)
         return
-
     target_user_id = int(user_str)
 
-    # Повторяем логику формирования списка AVAILABLE_EMOJIS
     row_size = 5
     inline_kb = []
     row_buf = []
 
-    for i, emo in enumerate(AVAILABLE_EMOJIS, 1):
+    for i, emo in enumerate(AVAILABLE_EMOJIS, start=1):
         cb = f"choose_emoji_{target_user_id}_{emo}"
         row_buf.append(InlineKeyboardButton(text=emo, callback_data=cb))
         if i % row_size == 0:
@@ -260,8 +278,16 @@ async def callback_reassign_emoji(callback: CallbackQuery, bot: Bot):
         inline_kb.append(row_buf)
 
     kb = InlineKeyboardMarkup(inline_keyboard=inline_kb)
-    await callback.message.edit_text(
-        text=f"Выберите новый эмоджи для пользователя {target_user_id}:",
-        reply_markup=kb
-    )
+
+    try:
+        await callback.message.edit_text(
+            text=f"Выберите новый эмоджи для пользователя {target_user_id}:",
+            reply_markup=kb
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
+        else:
+            raise
+
     await callback.answer()

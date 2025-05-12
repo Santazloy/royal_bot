@@ -1,3 +1,4 @@
+# handlers/news.py
 import json
 import asyncio
 import logging
