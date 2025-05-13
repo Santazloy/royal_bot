@@ -11,7 +11,8 @@ from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardButton,
-    InlineKeyboardMarkup
+    InlineKeyboardMarkup,
+    InputMediaPhoto
 )
 from aiogram.filters.command import Command
 from aiogram.filters import StateFilter
@@ -59,8 +60,23 @@ def get_message(lang: str, key: str, **kwargs) -> str:
     return tmpl.format(**kwargs)
 
 async def get_next_emoji(user_id: int) -> str:
-    """Возвращает «следующий» эмодзи пользователя — заглушка."""
-    return "❓"
+    """
+    Возвращает эмоджи пользователя user_id из таблицы user_emojis.
+    Если нет эмоджи — возвращает '❓'.
+    """
+    if not db.db_pool:
+        return "❓"
+
+    async with db.db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT emoji FROM user_emojis WHERE user_id=$1",
+            user_id
+        )
+        if row and row["emoji"]:
+            # Если вы храните несколько эмоджи через запятую — возьмём первый
+            return row["emoji"].split(",")[0]
+        else:
+            return "❓"
 
 def fmt(text: str) -> str:
     """Обёртка в <pre> + HTML-escape."""
@@ -73,7 +89,10 @@ LANG_DEFAULT = "ru"
 SPECIAL_USER_ID = 7935161063
 FINANCIAL_REPORT_GROUP_ID = -1002216239869  # ID группы для финансового отчёта
 BOOKING_REPORT_GROUP_ID = -1002671780634    # ID группы для отчётов о бронировании
-BOOKING_PHOTO_ID = "AgACAgUAAxkBAAPEaCLqGa_Je6K719LIIw-SalFZGKwAApXIMRtGDhFVcKvqCsVNQhoBAAMCAAN5AAM2BA"
+GROUP_CHOICE_IMG = "AgACAgUAAxkBAAPEaCLqGa_Je6K719LIIw-SalFZGKwAApXIMRtGDhFVcKvqCsVNQhoBAAMCAAN5AAM2BA"
+DAY_CHOICE_IMG   = "AgACAgUAAyEFAASVOrsCAAIBIWgjGN8CFKl7LksPnw7kUM9Pa_Y4AAJwxTEbBqYZVVVm0Imq2SzOAQADAgADeQADNgQ"
+TIME_CHOICE_IMG  = "AgACAgUAAyEFAASVOrsCAAIBI2gjGQi1nO6oor4Tc0-ejS-SVHO7AAJzxTEbBqYZVe5LXINfOjmGAQADAgADeQADNgQ"
+FINAL_BOOKED_IMG = "AgACAgUAAxkBAAPaaCMZb2OnhzHpAyOAMqt6uhntxCwAAtPDMRtGDhlVrgSlAsRFRSoBAAMCAAN5AAM2BA"
 
 special_payments = {
     '0': 40,   # при финальном статусе "✅"
@@ -206,23 +225,11 @@ router = Router()
 # Генерация слотов и соседей
 ###############################################################################
 def generate_time_slots() -> list[str]:
-    """Каждые полчаса (пример)."""
     return [
-        "12:00", "12:30",
-        "13:00", "13:30",
-        "14:00", "14:30",
-        "15:00", "15:30",
-        "16:00", "16:30",
-        "17:00", "17:30",
-        "18:00", "18:30",
-        "19:00", "19:30",
-        "20:00", "20:30",
-        "21:00", "21:30",
-        "22:00", "22:30",
-        "23:00", "23:30",
-        "00:00", "00:30",
-        "01:00", "01:30",
-        "02:00"
+        "12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30",
+        "16:00","16:30","17:00","17:30","18:00","18:30","19:00","19:30",
+        "20:00","20:30","21:00","21:30","22:00","22:30","23:00","23:30",
+        "00:00","00:30","01:00","01:30","02:00"
     ]
 
 def get_adjacent_slots(slot: str) -> list[str]:
@@ -242,15 +249,11 @@ def get_adjacent_slots(slot: str) -> list[str]:
 ###############################################################################
 @router.message(Command("book"))
 async def cmd_book(message: Message, state: FSMContext):
-    """Пользователь в ЛС: выбор группы для бронирования."""
-    if message.chat.type != "private":
-        await message.answer("Команду /book используйте в личке.")
-        return
-
+    # Список групп
     row_buf = []
     rows = []
     i = 0
-    for gk in groups_data.keys():
+    for gk in groups_data:
         row_buf.append(InlineKeyboardButton(text=gk, callback_data=f"bkgrp_{gk}"))
         i += 1
         if i % 3 == 0:
@@ -260,9 +263,10 @@ async def cmd_book(message: Message, state: FSMContext):
         rows.append(row_buf)
 
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await message.answer(
-        fmt("Выберите группу для бронирования:"),
-        parse_mode=ParseMode.HTML,
+    # Убираем любой текст, только картинка + кнопки
+    sent_msg = await message.answer_photo(
+        photo=GROUP_CHOICE_IMG,
+        caption="",  # Пустая подпись => без текста
         reply_markup=kb
     )
     await state.set_state(BookUserStates.waiting_for_group)
@@ -273,9 +277,9 @@ async def user_select_group(callback: CallbackQuery, state: FSMContext):
     if gk not in groups_data:
         await callback.answer("Нет такой группы!", show_alert=True)
         return
-
     await state.update_data(selected_group=gk)
 
+    # Кнопки (Сегодня / Завтра)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(text="Сегодня", callback_data="bkday_Сегодня"),
@@ -283,11 +287,27 @@ async def user_select_group(callback: CallbackQuery, state: FSMContext):
         ]]
     )
 
-    txt = f"Вы выбрали: {gk}\nВыберите день:"
-    await callback.message.edit_text(fmt(txt), parse_mode=ParseMode.HTML, reply_markup=kb)
+    # Редактируем фото на DAY_CHOICE_IMG, без текста
+    try:
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=DAY_CHOICE_IMG, caption=""),
+            reply_markup=kb
+        )
+    except TelegramBadRequest as e:
+        logger.warning(f"user_select_group edit_media error: {e}")
+        await callback.message.delete()
+        await callback.message.answer_photo(
+            photo=DAY_CHOICE_IMG,
+            caption="",
+            reply_markup=kb
+        )
+
     await callback.answer()
     await state.set_state(BookUserStates.waiting_for_day)
 
+###############################################################################
+# 3) Выбор дня => показываем выбор времени
+###############################################################################
 @router.callback_query(StateFilter(BookUserStates.waiting_for_day), F.data.startswith("bkday_"))
 async def user_select_day(callback: CallbackQuery, state: FSMContext):
     day_lbl = callback.data.removeprefix("bkday_")
@@ -295,8 +315,7 @@ async def user_select_day(callback: CallbackQuery, state: FSMContext):
     gk = data.get("selected_group")
 
     ginfo = groups_data[gk]
-    busy = set(ginfo["booked_slots"][day_lbl])
-    busy |= ginfo["unavailable_slots"][day_lbl]
+    busy = set(ginfo["booked_slots"][day_lbl]) | ginfo["unavailable_slots"][day_lbl]
 
     row_buf = []
     rows = []
@@ -312,11 +331,23 @@ async def user_select_day(callback: CallbackQuery, state: FSMContext):
         rows.append(row_buf)
 
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-
     await state.update_data(selected_day=day_lbl)
 
-    txt = f"Группа: {gk}\nДень: {day_lbl}\nВыберите свободный слот:"
-    await callback.message.edit_text(fmt(txt), parse_mode=ParseMode.HTML, reply_markup=kb)
+    # Редактируем на TIME_CHOICE_IMG, без текста вообще
+    try:
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=""),
+            reply_markup=kb
+        )
+    except TelegramBadRequest as e:
+        logger.warning(f"user_select_day edit_media error: {e}")
+        await callback.message.delete()
+        await callback.message.answer_photo(
+            photo=TIME_CHOICE_IMG,
+            caption="",
+            reply_markup=kb
+        )
+
     await callback.answer()
     await state.set_state(BookUserStates.waiting_for_time)
 
@@ -340,17 +371,21 @@ async def send_booking_report(bot: Bot, user_id: int, group_key: str, time_slot:
                 if row:
                     if row['username']:
                         username = row['username']
-                    if row['emojis']:
+                    if row['emoji']:
                         user_emoji = row['emoji'].split(',')[0]
         except Exception as e:
-            logger.error(f"Ошибка при получении username/emojis: {e}")
+            logger.error(f"Ошибка при получении username/emoji: {e}")
 
-    text_report = (
-        f"<b>📅 Новый Booking</b>\n"
-        f"👤 <b>Пользователь:</b> {user_emoji} {username}\n"
-        f"🌹 <b>Группа:</b> {group_key}\n"
-        f"⏰ <b>Время:</b> {time_slot} ({day})"
+    # Формируем текст без лишних экранирований,
+    # потом оборачиваем в <pre>...</pre> и parse_mode=HTML
+    text_body = (
+        f"📅 Новый Booking\n"
+        f"👤 Пользователь: {user_emoji} {username}\n"
+        f"🌹 Группа: {group_key}\n"
+        f"⏰ Время: {time_slot} ({day})"
     )
+    # Теперь оборачиваем во <pre>...</pre>
+    text_report = f"<pre>{text_body}</pre>"
 
     try:
         await bot.send_message(
@@ -363,26 +398,27 @@ async def send_booking_report(bot: Bot, user_id: int, group_key: str, time_slot:
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
 async def user_select_slot(callback: CallbackQuery, state: FSMContext):
+    """
+    Шаг 4 (финал): пользователь выбрал слот → записываем в БД, показываем «Слот забронирован!» + FINAL_BOOKED_IMG
+    """
     slot_str = callback.data.removeprefix("bkslot_").replace("_", ":")
     data = await state.get_data()
-    gk = data.get("selected_group")
+    gk  = data.get("selected_group")
     day = data.get("selected_day")
     uid = callback.from_user.id
 
     ginfo = groups_data[gk]
-    # Отмечаем слот как booked
+
+    # 1. Помечаем слот booked (память + БД)
     ginfo["booked_slots"][day].append(slot_str)
     ginfo["slot_bookers"][(day, slot_str)] = uid
     ginfo["time_slot_statuses"][(day, slot_str)] = "booked"
-
-    # Блокируем соседние слоты
     for adj in get_adjacent_slots(slot_str):
         if adj not in ginfo["booked_slots"][day]:
             ginfo["unavailable_slots"][day].add(adj)
             ginfo["time_slot_statuses"][(day, adj)] = "unavailable"
             ginfo["slot_bookers"][(day, adj)] = uid
 
-    # Сохранение в БД
     if db.db_pool:
         try:
             now_sh = datetime.datetime.now(ZoneInfo("Asia/Shanghai"))
@@ -416,21 +452,42 @@ async def user_select_slot(callback: CallbackQuery, state: FSMContext):
         except Exception as e:
             logger.error(f"Ошибка записи бронирования в БД: {e}")
 
-    # Отправка отчёта
+    # 2. Отправка репорта
     await send_booking_report(callback.bot, uid, gk, slot_str, day)
 
-    # Завершаем состояние FSM
+    # 3. Завершаем FSM
     await state.clear()
 
-    # Сообщение пользователю
+    # 4. Выводим финальное сообщение с FINAL_BOOKED_IMG
+    # 4. Выводим финальное сообщение с FINAL_BOOKED_IMG
     lang = await get_user_language(uid)
     final_txt = get_message(lang, 'slot_booked', day=day, time=slot_str, group=gk)
-    await callback.message.edit_text(fmt(final_txt), parse_mode=ParseMode.HTML)
+    # Сформируем HTML-строку с тегом <pre>
+    caption_final = f"<pre>{final_txt}</pre>"
+
+    try:
+        await callback.message.edit_media(
+            media=InputMediaPhoto(
+                media=FINAL_BOOKED_IMG,
+                caption=caption_final,
+                parse_mode=ParseMode.HTML  # добавляем parse_mode прямо здесь
+            ),
+            reply_markup=None
+        )
+    except TelegramBadRequest as e:
+        logger.warning(f"user_select_slot edit_media error: {e}")
+        # fallback
+        await callback.message.delete()
+        await callback.message.answer_photo(
+            photo=FINAL_BOOKED_IMG,
+            caption=caption_final,
+            parse_mode=ParseMode.HTML
+        )
+
     await callback.answer()
 
-    # Обновляем pinned
+    # 5. Обновляем pinned в группе
     await update_group_message(callback.bot, gk)
-
 ###############################################################################
 # (2) Управление слотами в группе (админ)
 ###############################################################################

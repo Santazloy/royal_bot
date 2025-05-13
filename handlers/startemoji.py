@@ -41,13 +41,13 @@ async def cmd_start(message: Message, bot: Bot):
     # Проверяем эмоджи в user_emojis
     async with db.db_pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT emoji FROM user_emoji WHERE user_id=$1",
+            "SELECT emoji FROM user_emojis WHERE user_id=$1",
             user_id
         )
         if row is None:
             # Создадим пустую запись (user_id, '')
             await conn.execute(
-                "INSERT INTO user_emoji (user_id, emoji) VALUES ($1, '')",
+                "INSERT INTO user_emojis (user_id, emoji) VALUES ($1, '')",
                 user_id
             )
             emoji_val = ""
@@ -55,13 +55,11 @@ async def cmd_start(message: Message, bot: Bot):
             emoji_val = row["emoji"] or ""
 
     if emoji_val:
-        # Если у пользователя уже есть эмоджи
         await message.answer(
             f"Привет! У тебя уже есть эмоджи: {emoji_val}\n"
             "Можешь пользоваться всеми командами!"
         )
     else:
-        # Нет эмоджи → уведомляем самого пользователя и просим админов
         await message.answer(
             "У вас пока <b>нет</b> эмоджи.\n"
             "Дождитесь, пока администратор назначит вам эмоджи.\n\n"
@@ -97,16 +95,11 @@ async def send_emoji_request_to_admins(user_id: int, bot: Bot):
 
 @router.callback_query(F.data.startswith("assign_emoji_"))
 async def callback_assign_emoji(callback: CallbackQuery, bot: Bot):
-    """
-    Когда админ нажимает «Назначить эмоджи для {user_id}»,
-    выводим полный список эмоджи для выбора.
-    """
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Вы не админ!", show_alert=True)
         return
 
     parts = callback.data.split("_", 2)
-    # parts = ["assign", "emoji", "{user_id}"]
     if len(parts) < 3:
         await callback.answer("Некорректные данные!", show_alert=True)
         return
@@ -116,6 +109,7 @@ async def callback_assign_emoji(callback: CallbackQuery, bot: Bot):
         await callback.answer("Некорректный user_id!", show_alert=True)
         return
     target_user_id = int(target_str)
+
 
     # Формируем клавиатуру: разложим AVAILABLE_EMOJIS по рядам
     row_size = 5
@@ -149,9 +143,6 @@ async def callback_assign_emoji(callback: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("choose_emoji_"))
 async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
-    """
-    Когда админ выбрал конкретный эмоджи (choose_emoji_{uid}_{emoji}).
-    """
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Вы не админ!", show_alert=True)
         return
@@ -173,7 +164,6 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
 
     target_user_id = int(user_id_str)
 
-    # Сохраняем в таблицу user_emojis
     if not db.db_pool:
         await callback.answer("db_pool is None!", show_alert=True)
         return
@@ -181,7 +171,7 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
     async with db.db_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO user_emoji (user_id, emoji)
+            INSERT INTO user_emojis (user_id, emoji)
             VALUES ($1, $2)
             ON CONFLICT (user_id)
             DO UPDATE SET emoji=excluded.emoji
@@ -219,10 +209,6 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
 
 @router.message(Command("emoji"))
 async def cmd_emoji(message: Message, bot: Bot):
-    """
-    Команда /emoji: показывает всем админам список (user_id -> emoji),
-    и даёт кнопку «reassign_...» для каждого.
-    """
     if not is_user_admin(message.from_user.id):
         await message.answer("Только админ может менять эмоджи.")
         return
@@ -232,7 +218,7 @@ async def cmd_emoji(message: Message, bot: Bot):
         return
 
     async with db.db_pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id, emoji FROM user_emoji ORDER BY user_id")
+        rows = await conn.fetch("SELECT user_id, emoji FROM user_emojis ORDER BY user_id")
 
     if not rows:
         await message.answer("Нет пользователей в таблице user_emojis.")
@@ -251,9 +237,6 @@ async def cmd_emoji(message: Message, bot: Bot):
 
 @router.callback_query(F.data.startswith("reassign_"))
 async def callback_reassign_emoji(callback: CallbackQuery, bot: Bot):
-    """
-    Когда админ выбрал конкретного пользователя для перевыбора эмоджи.
-    """
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Вы не админ!", show_alert=True)
         return

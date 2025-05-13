@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
 # Импортируем из booking.py то, что нужно:
-from handlers.booking import groups_data, BookUserStates, BOOKING_PHOTO_ID
+from handlers.booking import groups_data, BookUserStates, GROUP_CHOICE_IMG, DAY_CHOICE_IMG, TIME_CHOICE_IMG, FINAL_BOOKED_IMG
 from handlers.news import cmd_show_news
 menu_router = Router()
 
@@ -22,17 +22,12 @@ menu_router = Router()
 last_menu_message = {}
 
 # file_id картинки (фото) для главного меню:
-MENU_PHOTO_ID = "AgACAgUAAyEFAASVOrsCAAPIaCLmhi308A24UzDBSEx2jLW7VrkAAofEMRsGphlVmJQawyQ2FOIBAAMCAAN5AAM2BA"
+MENU_PHOTO_ID = "AgACAgQAAyEFAASJKijTAAIZ_mgjKdj-Sa3MdMHW-pSy_qLMhJOKAAJPxzEba90JUQfUH5f_fWYoAQADAgADeQADNgQ"
 
 
 @menu_router.message(Command("menu"))
 async def cmd_menu(message: Message):
-    """
-    При вызове /menu:
-    1) Удаляем предыдущее меню (если хранится в last_menu_message)
-    2) Отправляем новое сообщение с картинкой и двухколоночной клавиатурой
-    3) Сохраняем message_id
-    """
+
     chat_id = message.chat.id
 
     # Удаляем предыдущее меню (если есть)
@@ -63,7 +58,6 @@ async def cmd_menu(message: Message):
     try:
         sent_msg = await message.answer_photo(
             photo=MENU_PHOTO_ID,
-            caption="Главное меню",
             reply_markup=kb
         )
         # Запоминаем ID этого сообщения
@@ -105,34 +99,33 @@ async def on_menu_stub(callback: CallbackQuery, state: FSMContext):
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
         try:
-            # Пытаемся отредактировать старое сообщение (меняем фото + подпись + кнопки)
+            # Пытаемся отредактировать старое сообщение (меняем фото + кнопки, без текста)
             await callback.message.edit_media(
                 media=InputMediaPhoto(
-                    media=BOOKING_PHOTO_ID,
-                    caption="Выберите группу для бронирования:"
+                    media=GROUP_CHOICE_IMG,
+                    caption=""  # Пустая строка => нет подписи
                 ),
                 reply_markup=kb
             )
         except TelegramBadRequest as e:
-            # Если сообщение изначально было текстом, редактирование media не сработает
+            # Если сообщение изначально было текстом, edit_media не сработает
             logging.warning(f"Edit media failed: {e}. Удаляем и шлём новое.")
-            # Удаляем старое и отправляем новое
             try:
                 await callback.message.delete()
             except:
                 pass
+            # Отправляем новое фото, без подписи
             new_msg = await callback.message.answer_photo(
-                photo=BOOKING_PHOTO_ID,
-                caption="Выберите группу для бронирования:",
+                photo=GROUP_CHOICE_IMG,
+                caption="",  # Также без текста
                 reply_markup=kb
             )
-            # При желании можно сохранить new_msg.message_id вместо старого,
-            # если вы хотите далее удалять именно его.
+            # Если нужно, можно сохранить new_msg.message_id
 
         # Устанавливаем FSM: ждём выбор группы
         await state.set_state(BookUserStates.waiting_for_group)
 
-        # Уведомим пользователя, что ок
+        # Закрываем alert
         await callback.answer()
         return
 
