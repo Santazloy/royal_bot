@@ -7,6 +7,7 @@ from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Router, F, types, Bot
+
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -1113,6 +1114,118 @@ async def send_financial_report(bot: Bot):
     except Exception as e:
         logger.error(f"Ошибка при отправке фин. отчёта: {e}")
 
+###############################################################################
+# (N) Просмотр всех бронирований
+###############################################################################
+
+@router.callback_query(F.data == "view_all_bookings", StateFilter("*"))
+async def cmd_all(callback_query: types.CallbackQuery, state: FSMContext):
+    """
+    Обработка кнопки view_all_bookings. Выводит ASCII-таблицу бронирований.
+    Если сообщение не-текстовое, edit_text даст ошибку => удаляем и отправляем новое.
+    """
+    user_id = callback_query.from_user.id
+    user_lang = await get_user_language(user_id)
+
+    # (1) Формируем lines
+    group_times = {}
+    for group_name, group_info in groups_data.items():
+        for d in ['Сегодня', 'Завтра']:
+            times = group_info['booked_slots'].get(d, [])
+            if times:
+                if group_name not in group_times:
+                    group_times[group_name] = {}
+                times_with_emojis = []
+                for slot in sorted(set(times)):
+                    uid = group_info['slot_bookers'].get((d, slot))
+                    emoji = await get_next_emoji(uid) if uid else '❓'
+                    if f"{slot} {emoji}" not in times_with_emojis:
+                        times_with_emojis.append(f"{slot} {emoji}")
+                group_times[group_name][d] = times_with_emojis
+
+    # (2) Если нет бронирований
+    if not group_times:
+        try:
+            await callback_query.message.edit_text(
+                get_message(user_lang, 'no_active_bookings')
+            )
+        except TelegramBadRequest as e:
+            # fallback
+            if "there is no text in the message to edit" in str(e).lower():
+                await safe_delete_and_answer(callback_query.message, get_message(user_lang, 'no_active_bookings'))
+            else:
+                raise
+        await callback_query.answer()
+        return
+
+    # (3) Генерируем ASCII-таблицу
+    lines = []
+    for day_label in ['Сегодня','Завтра']:
+        display_day = get_message(user_lang, 'today') if day_label=='Сегодня' else get_message(user_lang, 'tomorrow')
+        lines.append(f"📅 {get_message(user_lang, 'all_bookings_title', day=display_day)}")
+
+        day_has_bookings = any(group_times[g].get(day_label) for g in group_times)
+        if not day_has_bookings:
+            lines.append(get_message(user_lang, 'no_bookings'))
+            continue
+
+        lines.append("╔══════════╦════════════════════╗")
+        lines.append("║ Группа   ║ Время бронирования ║")
+        lines.append("╠══════════╬════════════════════╣")
+
+        for grp, times_dict in group_times.items():
+            if day_label not in times_dict:
+                continue
+            time_slots = times_dict[day_label]
+            if not time_slots:
+                continue
+
+            # первая строка
+            lines.append(f"║ {grp:<9}║ {time_slots[0]:<18}║")
+            # остальные
+            for slot_line in time_slots[1:]:
+                lines.append(f"║ {'':<9}║ {slot_line:<18}║")
+            lines.append("╠══════════╬════════════════════╣")
+
+        if lines[-1].startswith("╠"):
+            lines[-1] = "╚══════════╩════════════════════╝"
+        else:
+            lines.append("╚══════════╩════════════════════╝")
+
+        lines.append("")
+
+    # (4) Склеиваем
+    text_result = "\n".join(lines)
+    escaped_text = html.escape(text_result)
+    text_to_send = f"<pre>{escaped_text}</pre>"
+
+    # (5) Пытаемся edit_text
+    try:
+        await callback_query.message.edit_text(
+            text_to_send,
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest as e:
+        err_str = str(e).lower()
+        if "there is no text in the message to edit" in err_str:
+            # fallback
+            await safe_delete_and_answer(callback_query.message, text_to_send)
+        else:
+            raise
+
+    await callback_query.answer()
+
+
+async def safe_delete_and_answer(msg: types.Message, text: str):
+    """
+    Безопасно удаляет сообщение msg (если оно не текстовое), и отправляет новый text.
+    """
+    try:
+        await msg.delete()
+    except Exception as ex:
+        logging.warning(f"Не удалось удалить message_id={msg.message_id}: {ex}")
+
+    await msg.answer(text, parse_mode=ParseMode.HTML)
 ###############################################################################
 # (доп) send_time_slots(...) при необходимости
 ###############################################################################
