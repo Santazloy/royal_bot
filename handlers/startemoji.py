@@ -41,13 +41,13 @@ async def cmd_start(message: Message, bot: Bot):
     # Проверяем эмоджи в user_emojis
     async with db.db_pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT emoji FROM user_emojis WHERE user_id=$1",
+            "SELECT emoji FROM user_emoji WHERE user_id=$1",
             user_id
         )
         if row is None:
             # Создадим пустую запись (user_id, '')
             await conn.execute(
-                "INSERT INTO user_emojis (user_id, emoji) VALUES ($1, '')",
+                "INSERT INTO user_emoji (user_id, emoji) VALUES ($1, '')",
                 user_id
             )
             emoji_val = ""
@@ -181,7 +181,7 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
     async with db.db_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO user_emojis (user_id, emoji)
+            INSERT INTO user_emoji (user_id, emoji)
             VALUES ($1, $2)
             ON CONFLICT (user_id)
             DO UPDATE SET emoji=excluded.emoji
@@ -232,7 +232,7 @@ async def cmd_emoji(message: Message, bot: Bot):
         return
 
     async with db.db_pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id, emoji FROM user_emojis ORDER BY user_id")
+        rows = await conn.fetch("SELECT user_id, emoji FROM user_emoji ORDER BY user_id")
 
     if not rows:
         await message.answer("Нет пользователей в таблице user_emojis.")

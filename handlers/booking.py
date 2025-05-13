@@ -73,6 +73,7 @@ LANG_DEFAULT = "ru"
 SPECIAL_USER_ID = 7935161063
 FINANCIAL_REPORT_GROUP_ID = -1002216239869  # ID группы для финансового отчёта
 BOOKING_REPORT_GROUP_ID = -1002671780634    # ID группы для отчётов о бронировании
+BOOKING_PHOTO_ID = "AgACAgUAAxkBAAPEaCLqGa_Je6K719LIIw-SalFZGKwAApXIMRtGDhFVcKvqCsVNQhoBAAMCAAN5AAM2BA"
 
 special_payments = {
     '0': 40,   # при финальном статусе "✅"
@@ -340,7 +341,7 @@ async def send_booking_report(bot: Bot, user_id: int, group_key: str, time_slot:
                     if row['username']:
                         username = row['username']
                     if row['emojis']:
-                        user_emoji = row['emojis'].split(',')[0]
+                        user_emoji = row['emoji'].split(',')[0]
         except Exception as e:
             logger.error(f"Ошибка при получении username/emojis: {e}")
 

@@ -13,7 +13,7 @@ from handlers.group_id import router as group_id_router
 from handlers.startemoji import router as startemoji_router
 from handlers.booking import router as booking_router
 from handlers.mamasan import mamasan_router
-
+from handlers.menu import menu_router
 async def main():
     logging.basicConfig(level=logging.INFO)
 
@@ -31,6 +31,7 @@ async def main():
     dp.include_router(group_id_router)
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
+    dp.include_router(menu_router)
     dp.include_router(mamasan_router)
     # Пример использования функции из mamasan
     sample_text = "Пример запроса"
