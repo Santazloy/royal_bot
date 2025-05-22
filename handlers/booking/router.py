@@ -5,7 +5,7 @@ import html
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from aiogram import Bot, Router, F, types
+from aiogram import Bot, Router, F
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -42,15 +42,18 @@ from utils.time_utils import (
     get_adjacent_time_slots,
     get_slot_datetime_shanghai,
 )
-from db_access.booking_repo import BookingRepo
-from handlers.booking.data_manager import BookingDataManager
+from db_access.booking import BookingRepo
 from app_states import BookUserStates, BookPaymentStates
+# в начале router.py
+from handlers.booking.data_manager import BookingDataManager
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-repo = BookingRepo(db.db_pool)
+repo = BookingRepo()
 data_mgr = BookingDataManager(groups_data)
+# и сразу загрузите из БД:
+
 
 
 @router.message(Command("book"))
@@ -99,58 +102,60 @@ async def user_select_day(cb: CallbackQuery, state: FSMContext):
     await state.update_data(selected_day=day)
     await send_time_slots(cb, day, state)
 
-
-async def send_time_slots(callback_query: types.CallbackQuery, selected_day: str, state: FSMContext):
-    user_data = await state.get_data()
-    gk = user_data["selected_group"]
+# делаем так:
+async def send_time_slots(
+    callback_query: CallbackQuery,
+    selected_day: str,
+    state: FSMContext
+):
+    """
+    Показываем пользователю свободные слоты + кнопку «Назад» к выбору дня.
+    """
+    data = await state.get_data()
+    gk = data["selected_group"]
     ginfo = groups_data[gk]
 
-    # Собираем занятые/скрытые слоты
+    # 1) Собираем занятые и недоступные слоты
     busy = set(ginfo["booked_slots"].get(selected_day, []))
-    # Не даём выбирать "соседние" слоты, которые уже помечены как unavailable
     for bs in list(busy):
         busy.update(get_adjacent_time_slots(bs))
     busy |= ginfo["unavailable_slots"].get(selected_day, set())
 
-    # Также учитываем статусы, которые запрещают показ слота в списке
-    # (не показываем слоты, если уже есть финальный статус, кроме booked)
-    final_block = {'❌❌❌', '✅', '✅2', '✅✅', '✅✅✅', 'unavailable'}
+    # 2) Блокируем любые финальные статусы
+    final = {'❌❌❌', '✅', '✅2', '✅✅', '✅✅✅'}
     for (d, t), st in ginfo["time_slot_statuses"].items():
-        if d == selected_day and st in final_block:
+        if d == selected_day and st in final:
             busy.add(t)
 
-    # Строим клавиатуру из свободных слотов
+    # 3) Строим клавиатуру из свободных слотов
     builder = InlineKeyboardBuilder()
     for slot in generate_time_slots():
-        if slot in busy:
-            continue
-        builder.button(text=slot, callback_data=f"bkslot_{slot.replace(':','_')}")
-    # Добавляем кнопку "Назад"
-    builder.button(text="« Назад", callback_data="bkgrp_back")
+        if slot not in busy:
+            builder.button(text=slot, callback_data=f"bkslot_{slot.replace(':','_')}")
+    # Кнопка «Назад»
+    builder.button(text="« Назад", callback_data="bkday_back")
     builder.adjust(4)
-    keyboard = builder.as_markup()
+    kb = builder.as_markup()
 
-    # Формируем текст
-    user_lang = await get_user_language(callback_query.from_user.id)
-    day_label = get_message(user_lang, 'today') if selected_day == 'Сегодня' else get_message(user_lang, 'tomorrow')
-    text = get_message(user_lang, 'choose_time_styled', day=day_label)
-    formatted = format_html_pre(text)
+    # 4) Подпись
+    lang = await get_user_language(callback_query.from_user.id)
+    day_label = get_message(lang, 'today') if selected_day == 'Сегодня' else get_message(lang, 'tomorrow')
+    text = get_message(lang, 'choose_time_styled', day=day_label)
+    caption = format_html_pre(text)
 
-    # Пытаемся изменить фото в том же сообщении
+    # 5) Редактируем или шлём новое медиа
     try:
         await callback_query.message.edit_media(
-            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=formatted),
-            reply_markup=keyboard
+            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=caption),
+            reply_markup=kb
         )
     except TelegramBadRequest:
-        # Если не получилось — отправляем новое
         await callback_query.message.answer_photo(
-            photo=TIME_CHOICE_IMG, caption=formatted, reply_markup=keyboard
+            photo=TIME_CHOICE_IMG, caption=caption, reply_markup=kb
         )
 
     await callback_query.answer()
     await state.set_state(BookUserStates.waiting_for_time)
-
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
 async def user_select_time(cb: CallbackQuery, state: FSMContext):
@@ -219,38 +224,50 @@ async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
 @router.callback_query(F.data.startswith("group_time|"))
 async def admin_click_slot(cb: CallbackQuery):
     """
-    Когда админ в группе нажимает на слот (в состоянии 'booked' или пустом),
-    предлагаем выбрать финальный статус.
+    Админ нажал на кнопку «<день> <время>» в групчатике — показываем
+    варианты финального статуса + крестик Отменить + «Назад».
     """
-    parts = cb.data.split("|")
-    _, gk, day, slot = parts
+    _, gk, day, slot = cb.data.split("|")
     ginfo = groups_data.get(gk)
     if not ginfo or cb.message.chat.id != ginfo["chat_id"]:
         return await cb.answer("Нет прав!", show_alert=True)
 
-    # Проверяем, что нажал админ
     member = await cb.bot.get_chat_member(cb.message.chat.id, cb.from_user.id)
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Только админ!", show_alert=True)
 
-    # Строим клавиатуру с вариантами финального статуса
+    # Строим клавиатуру:
+    # — первая строка: ✅, ✅2, ✅✅, ✅✅✅
+    # — вторая: ❌❌❌ (отменить)
+    # — третья: « Назад»
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text=e,
+                text=emoji,
                 callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
             )
-            for code, e in status_mapping.items()
+            for code, emoji in status_mapping.items()
         ],
-        [InlineKeyboardButton(text="❌❌❌", callback_data=f"group_status|{gk}|{day}|{slot}|-1")],
-        [InlineKeyboardButton(text="Назад",  callback_data=f"group_status|{gk}|{day}|{slot}|back")]
+        [
+            InlineKeyboardButton(
+                text="❌❌❌ Отменить",
+                callback_data=f"group_status|{gk}|{day}|{slot}|-1"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="« Назад",
+                callback_data=f"group_status|{gk}|{day}|{slot}|back"
+            )
+        ]
     ])
 
-    await cb.message.edit_text("<b>Выберите финальный статус слота:</b>",
-                               parse_mode=ParseMode.HTML,
-                               reply_markup=kb)
+    await cb.message.edit_text(
+        "<b>Выберите финальный статус слота:</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=kb
+    )
     await cb.answer()
-
 
 @router.callback_query(F.data.startswith("group_status|"))
 async def admin_click_status(cb: CallbackQuery):
@@ -846,8 +863,7 @@ async def cmd_all(cb: CallbackQuery, state: FSMContext):
         await safe_delete_and_answer(cb.message, text)
     await cb.answer()
 
-
-async def safe_delete_and_answer(msg: types.Message, text: str):
+async def safe_delete_and_answer(msg: Message, text: str):
     try:
         await msg.delete()
     except:

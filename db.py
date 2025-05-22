@@ -1,4 +1,3 @@
-# db.py
 import os
 import logging
 import asyncpg
@@ -30,35 +29,30 @@ async def create_tables():
         raise RuntimeError("db_pool is None! Сначала вызовите init_db_pool().")
 
     async with db_pool.acquire() as conn:
-        # 1) Таблица bookings
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS bookings (
                 group_key TEXT NOT NULL,
                 day TEXT NOT NULL,
                 time_slot TEXT NOT NULL,
                 user_id BIGINT NOT NULL,
-                status TEXT NOT NULL,          -- 'booked' и т.п.
-                status_code TEXT,             -- код для финансовой логики
+                status TEXT NOT NULL,
+                status_code TEXT,
                 start_time TIMESTAMPTZ,
                 payment_method TEXT,
                 amount INTEGER,
                 PRIMARY KEY (group_key, day, time_slot, user_id)
             );
         """)
-
-        # 2) Таблица статусов слотов
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS group_time_slot_statuses (
                 group_key TEXT NOT NULL,
                 day TEXT NOT NULL,
                 time_slot TEXT NOT NULL,
-                status TEXT NOT NULL,          -- 'booked', 'unavailable', '✅', '❌❌❌' и т.п.
+                status TEXT NOT NULL,
                 user_id BIGINT,
                 PRIMARY KEY (group_key, day, time_slot)
             );
         """)
-
-        # 3) Финансовая таблица по группам
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS group_financial_data (
                 group_key TEXT PRIMARY KEY,
@@ -68,8 +62,6 @@ async def create_tables():
                 message_id BIGINT
             );
         """)
-
-        # 4) Пользователи и их балансы
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -79,22 +71,12 @@ async def create_tables():
                 monthly_profit BIGINT NOT NULL DEFAULT 0
             );
         """)
-
-        # 5) Старые таблицы news и user_emojis
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS news (
-                id BIGSERIAL PRIMARY KEY,
-                file_ids TEXT,
-                text TEXT
-            );
-        """)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_emojis (
                 user_id BIGINT PRIMARY KEY,
                 emoji TEXT DEFAULT ''
             );
         """)
-
         logging.info("Все таблицы созданы или проверены.")
 
 async def close_db_pool():
