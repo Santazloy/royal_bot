@@ -1,3 +1,5 @@
+# states/salary_states.py
+
 from aiogram.fsm.state import State, StatesGroup
 
 class SalaryStates(StatesGroup):

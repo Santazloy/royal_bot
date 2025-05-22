@@ -1,3 +1,5 @@
+# main.py
+
 import asyncio
 import logging
 
@@ -18,7 +20,7 @@ from handlers.menu import menu_router
 # загрузчики состояния слотов и зарплат
 from handlers.booking.loader import load_slots_from_db
 from handlers.salary import load_salary_data_from_db
-
+from handlers.clean import router as clean_router
 async def main():
     logging.basicConfig(level=logging.INFO)
 
@@ -41,13 +43,14 @@ async def main():
     dp = Dispatcher()
 
     # 5) Подключаем все роутеры
+    dp.include_router(group_id_router)
     dp.include_router(news_router)
     dp.include_router(idphoto_router)
-    dp.include_router(group_id_router)
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
     dp.include_router(salary_router)
     dp.include_router(menu_router)
+    dp.include_router(clean_router)
 
     # 6) Устанавливаем команды (для автодополнения в клиенте)
     await bot.set_my_commands([

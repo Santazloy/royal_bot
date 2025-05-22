@@ -1,3 +1,5 @@
+# handlers/booking/router.py
+
 import logging
 import html
 from datetime import timedelta
@@ -47,7 +49,6 @@ from app_states import BookUserStates, BookPaymentStates
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Инициализируем репозиторий с пулом
 repo = BookingRepo(db.db_pool)
 data_mgr = BookingDataManager(groups_data)
 
@@ -99,6 +100,91 @@ async def user_select_day(cb: CallbackQuery, state: FSMContext):
     await send_time_slots(cb, day, state)
 
 
+async def send_time_slots(callback_query: types.CallbackQuery, selected_day: str, state: FSMContext):
+    user_data = await state.get_data()
+    gk = user_data["selected_group"]
+    ginfo = groups_data[gk]
+
+    # Собираем занятые/скрытые слоты
+    busy = set(ginfo["booked_slots"].get(selected_day, []))
+    # Не даём выбирать "соседние" слоты, которые уже помечены как unavailable
+    for bs in list(busy):
+        busy.update(get_adjacent_time_slots(bs))
+    busy |= ginfo["unavailable_slots"].get(selected_day, set())
+
+    # Также учитываем статусы, которые запрещают показ слота в списке
+    # (не показываем слоты, если уже есть финальный статус, кроме booked)
+    final_block = {'❌❌❌', '✅', '✅2', '✅✅', '✅✅✅', 'unavailable'}
+    for (d, t), st in ginfo["time_slot_statuses"].items():
+        if d == selected_day and st in final_block:
+            busy.add(t)
+
+    # Строим клавиатуру из свободных слотов
+    builder = InlineKeyboardBuilder()
+    for slot in generate_time_slots():
+        if slot in busy:
+            continue
+        builder.button(text=slot, callback_data=f"bkslot_{slot.replace(':','_')}")
+    # Добавляем кнопку "Назад"
+    builder.button(text="« Назад", callback_data="bkgrp_back")
+    builder.adjust(4)
+    keyboard = builder.as_markup()
+
+    # Формируем текст
+    user_lang = await get_user_language(callback_query.from_user.id)
+    day_label = get_message(user_lang, 'today') if selected_day == 'Сегодня' else get_message(user_lang, 'tomorrow')
+    text = get_message(user_lang, 'choose_time_styled', day=day_label)
+    formatted = format_html_pre(text)
+
+    # Пытаемся изменить фото в том же сообщении
+    try:
+        await callback_query.message.edit_media(
+            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=formatted),
+            reply_markup=keyboard
+        )
+    except TelegramBadRequest:
+        # Если не получилось — отправляем новое
+        await callback_query.message.answer_photo(
+            photo=TIME_CHOICE_IMG, caption=formatted, reply_markup=keyboard
+        )
+
+    await callback_query.answer()
+    await state.set_state(BookUserStates.waiting_for_time)
+
+
+@router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
+async def user_select_time(cb: CallbackQuery, state: FSMContext):
+    slot = cb.data.removeprefix("bkslot_").replace("_", ":")
+    data = await state.get_data()
+    gk, day, uid = data["selected_group"], data["selected_day"], cb.from_user.id
+
+    # Заполняем структуры в памяти
+    data_mgr.book_slot(gk, day, slot, uid)
+    # Запись в БД: создаём booking
+    iso = get_slot_datetime_shanghai(day, slot)
+    await repo.add_booking(gk, day, slot, uid, iso)
+
+    # Отправим уведомление в спец. группу
+    await send_booking_report(cb.bot, uid, gk, slot, day)
+    await state.clear()
+
+    # Сообщаем пользователю
+    lang = await get_user_language(uid)
+    txt = get_message(lang, 'slot_booked', time=slot, day=day, group=gk)
+    caption = format_html_pre(txt)
+    try:
+        await cb.message.edit_media(
+            media=InputMediaPhoto(media=FINAL_BOOKED_IMG, caption=caption),
+            reply_markup=None,
+        )
+    except TelegramBadRequest:
+        await cb.message.answer_photo(photo=FINAL_BOOKED_IMG, caption=caption)
+
+    await cb.answer()
+    # Обновляем сообщение в группе, чтобы появилась кнопка с booked
+    await update_group_message(cb.bot, gk)
+
+
 async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
     username = f"User {uid}"
     user_emoji = "❓"
@@ -130,96 +216,34 @@ async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
     )
 
 
-
-async def send_time_slots(callback_query: types.CallbackQuery, selected_day: str, state: FSMContext):
-    user_data = await state.get_data()
-    gk = user_data["selected_group"]
-    ginfo = groups_data[gk]
-
-    # Собираем занятые/скрытые слоты
-    busy = set(ginfo["booked_slots"].get(selected_day, []))
-    for bs in list(busy):
-        busy.update(get_adjacent_time_slots(bs))
-    busy |= ginfo["unavailable_slots"].get(selected_day, set())
-    final = {'❌❌❌', '✅', '✅2', '✅✅', '✅✅✅'}
-    for (d, t), st in ginfo["time_slot_statuses"].items():
-        if d == selected_day and st in final:
-            busy.add(t)
-
-    # Строим клавиатуру свободных слотов
-    builder = InlineKeyboardBuilder()
-    for slot in generate_time_slots():
-        if slot in busy:
-            continue
-        builder.button(text=slot, callback_data=f"bkslot_{slot.replace(':','_')}")
-    builder.button(text="« Назад", callback_data="bkgrp_back")
-    builder.adjust(4)
-    keyboard = builder.as_markup()
-
-    # Формируем текст
-    user_lang = await get_user_language(callback_query.from_user.id)
-    day_label = get_message(user_lang, 'today') if selected_day == 'Сегодня' else get_message(user_lang, 'tomorrow')
-    text = get_message(user_lang, 'choose_time_styled', day=day_label)
-    formatted = format_html_pre(text)
-
-    # Пытаемся заменить медиа на TIME_CHOICE_IMG
-    try:
-        await callback_query.message.edit_media(
-            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=formatted),
-            reply_markup=keyboard
-        )
-    except TelegramBadRequest:
-        # Если не получилось — отправляем новое фото
-        await callback_query.message.answer_photo(
-            photo=TIME_CHOICE_IMG, caption=formatted, reply_markup=keyboard
-        )
-
-    await callback_query.answer()
-    await state.set_state(BookUserStates.waiting_for_time)
-
-
-@router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
-async def user_select_time(cb: CallbackQuery, state: FSMContext):
-    slot = cb.data.removeprefix("bkslot_").replace("_", ":")
-    data = await state.get_data()
-    gk, day, uid = data["selected_group"], data["selected_day"], cb.from_user.id
-
-    data_mgr.book_slot(gk, day, slot, uid)
-    iso = get_slot_datetime_shanghai(day, slot)
-    await repo.add_booking(gk, day, slot, uid, iso)
-    await send_booking_report(cb.bot, uid, gk, slot, day)
-    await state.clear()
-
-    lang = await get_user_language(uid)
-    txt = get_message(lang, 'slot_booked', time=slot, day=day, group=gk)
-    caption = format_html_pre(txt)
-    try:
-        await cb.message.edit_media(
-            media=InputMediaPhoto(media=FINAL_BOOKED_IMG, caption=caption),
-            reply_markup=None,
-        )
-    except TelegramBadRequest:
-        await cb.message.answer_photo(photo=FINAL_BOOKED_IMG, caption=caption)
-
-    await cb.answer()
-    await update_group_message(cb.bot, gk)
-
 @router.callback_query(F.data.startswith("group_time|"))
 async def admin_click_slot(cb: CallbackQuery):
+    """
+    Когда админ в группе нажимает на слот (в состоянии 'booked' или пустом),
+    предлагаем выбрать финальный статус.
+    """
     parts = cb.data.split("|")
     _, gk, day, slot = parts
     ginfo = groups_data.get(gk)
     if not ginfo or cb.message.chat.id != ginfo["chat_id"]:
         return await cb.answer("Нет прав!", show_alert=True)
+
+    # Проверяем, что нажал админ
     member = await cb.bot.get_chat_member(cb.message.chat.id, cb.from_user.id)
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Только админ!", show_alert=True)
 
+    # Строим клавиатуру с вариантами финального статуса
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=e, callback_data=f"group_status|{gk}|{day}|{slot}|{code}")
-         for code, e in status_mapping.items() if code != "-1"],
+        [
+            InlineKeyboardButton(
+                text=e,
+                callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
+            )
+            for code, e in status_mapping.items()
+        ],
         [InlineKeyboardButton(text="❌❌❌", callback_data=f"group_status|{gk}|{day}|{slot}|-1")],
-        [InlineKeyboardButton(text="Назад", callback_data=f"group_status|{gk}|{day}|{slot}|back")]
+        [InlineKeyboardButton(text="Назад",  callback_data=f"group_status|{gk}|{day}|{slot}|back")]
     ])
 
     await cb.message.edit_text("<b>Выберите финальный статус слота:</b>",
@@ -230,36 +254,87 @@ async def admin_click_slot(cb: CallbackQuery):
 
 @router.callback_query(F.data.startswith("group_status|"))
 async def admin_click_status(cb: CallbackQuery):
+    """
+    Завершение (или отмена) бронирования админом.
+    Если выбран ❌❌❌, то запись и слоты удаляются, всё возвращается в список.
+    Если выбран другой статус, то слот становится финальным, кнопка пропадает.
+    """
     parts = cb.data.split("|")
     _, gk, day, slot, code = parts
     ginfo = groups_data.get(gk)
     if not ginfo or cb.message.chat.id != ginfo["chat_id"]:
         return await cb.answer("Нет прав!", show_alert=True)
+
+    # Проверяем, что нажал админ
     member = await cb.bot.get_chat_member(cb.message.chat.id, cb.from_user.id)
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Нет прав!", show_alert=True)
 
+    # Кнопка "Назад" -> просто обновляем сообщение
     if code == "back":
         await update_group_message(cb.bot, gk)
         return await cb.answer()
 
+    # [!!! CHANGE] Если выбрана ❌❌❌ — отменяем бронирование, всё чистим
     if code == "-1":
-        ginfo["time_slot_statuses"][(day, slot)] = "❌❌❌"
-        await update_group_message(cb.bot, gk)
-        return await cb.answer("Слот удалён.")
+        # Удаляем слот из памяти
+        uid = ginfo["slot_bookers"].pop((day, slot), None)
+        if uid and slot in ginfo["booked_slots"].get(day, []):
+            ginfo["booked_slots"][day].remove(slot)
 
+        # Возвращаем соседние слоты из unavailable, если они принадлежали этому же юзеру
+        adjs = get_adjacent_time_slots(slot)
+        for adj in adjs:
+            if adj in ginfo["unavailable_slots"][day]:
+                ginfo["unavailable_slots"][day].remove(adj)
+                # Удаляем статус, если он там был
+                if (day, adj) in ginfo["time_slot_statuses"]:
+                    del ginfo["time_slot_statuses"][(day, adj)]
+                # Удаляем booker, если это тот же пользователь
+                if (day, adj) in ginfo["slot_bookers"]:
+                    if ginfo["slot_bookers"][(day, adj)] == uid:
+                        ginfo["slot_bookers"].pop((day, adj), None)
+
+        # Удаляем основной слот из статусов
+        if (day, slot) in ginfo["time_slot_statuses"]:
+            del ginfo["time_slot_statuses"][(day, slot)]
+
+        # Удаляем из БД
+        try:
+            if db.db_pool:
+                async with db.db_pool.acquire() as con:
+                    await con.execute(
+                        "DELETE FROM bookings "
+                        "WHERE group_key=$1 AND day=$2 AND time_slot=$3",
+                        gk, day, slot
+                    )
+                    await con.execute(
+                        "DELETE FROM group_time_slot_statuses "
+                        "WHERE group_key=$1 AND day=$2 AND time_slot=$3",
+                        gk, day, slot
+                    )
+        except Exception as e:
+            logger.error(f"DB error on delete: {e}")
+
+        # Обновляем сообщение
+        await update_group_message(cb.bot, gk)
+        return await cb.answer("Слот отменён.")
+
+    # Иначе устанавливаем финальный статус (✅, ✅2 и т.д.)
     emoji = status_mapping.get(code)
     ginfo["time_slot_statuses"][(day, slot)] = emoji
 
+    # Запоминаем в БД (status и status_code)
+    uid = ginfo["slot_bookers"].get((day, slot))
     if db.db_pool:
         try:
-            uid = ginfo["slot_bookers"].get((day, slot))
             async with db.db_pool.acquire() as con:
                 await con.execute(
                     "UPDATE bookings SET status_code=$1, status=$2 "
                     "WHERE group_key=$3 AND day=$4 AND time_slot=$5",
                     code, emoji, gk, day, slot
                 )
+                # Обновляем (или вставляем) статусы
                 await con.execute(
                     """
                     INSERT INTO group_time_slot_statuses
@@ -273,8 +348,10 @@ async def admin_click_status(cb: CallbackQuery):
         except Exception as e:
             logger.error(f"DB error: {e}")
 
+    # Применим, если нужно, награду для SPECIAL_USER_ID
     await apply_special_user_reward(code, cb.bot)
 
+    # После выбора статуса предлагаем выбрать способ оплаты (cash/beznal/agent)
     pay_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"),
         InlineKeyboardButton(text="Безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"),
@@ -309,12 +386,113 @@ async def apply_special_user_reward(status_code: str, bot: Bot):
         pass
 
 
+@router.callback_query(F.data.startswith("payment_method|"))
+async def process_payment_method(cb: CallbackQuery, state: FSMContext):
+    parts = cb.data.split("|")
+    _, gk, day, slot, code, method = parts
+    lang = await get_user_language(cb.from_user.id)
+    ginfo = groups_data.get(gk)
+    if not ginfo or cb.message.chat.id != ginfo["chat_id"]:
+        return await cb.answer(get_message(lang, "no_permission"), show_alert=True)
+
+    member = await cb.bot.get_chat_member(cb.message.chat.id, cb.from_user.id)
+    if member.status not in ("administrator", "creator"):
+        return await cb.answer(get_message(lang, "no_permission"), show_alert=True)
+
+    if not db.db_pool:
+        return await cb.answer("Нет подключения к БД", show_alert=True)
+
+    conn = await db.db_pool.acquire()
+    try:
+        row = await conn.fetchrow(
+            "SELECT user_id FROM bookings WHERE group_key=$1 AND day=$2 AND time_slot=$3",
+            gk, day, slot,
+        )
+    finally:
+        await db.db_pool.release(conn)
+    if not row:
+        return await cb.answer(get_message(lang, "no_such_booking"), show_alert=True)
+
+    await cb.answer()
+    if method in ("cash", "beznal"):
+        txt = get_message(lang, "enter_payment_amount")
+        await state.update_data(
+            group_key=gk, day=day, time_slot=slot, status_code=code, payment_method=method
+        )
+        try:
+            await cb.bot.edit_message_text(
+                chat_id=cb.message.chat.id,
+                message_id=cb.message.message_id,
+                text=format_html_pre(txt),
+                parse_mode=ParseMode.HTML,
+            )
+        except TelegramBadRequest:
+            pass
+        await state.set_state(BookPaymentStates.waiting_for_amount)
+    else:
+        # Агент
+        await handle_agent_payment(cb, gk, day, slot, code)
+
+
+async def handle_agent_payment(cb: CallbackQuery, gk: str, day: str, slot: str, status_code: str):
+    """
+    При 'Агент' своя логика расчётов, если требуется.
+    """
+    bot = cb.bot
+    uid = cb.from_user.id
+    lang = await get_user_language(uid)
+    emoji = status_mapping.get(status_code)
+    if not emoji:
+        return await cb.answer("Некорректный статус!", show_alert=True)
+    ginfo = groups_data.get(gk)
+    if not ginfo:
+        return await cb.answer("Нет такой группы!", show_alert=True)
+
+    # Ниже упрощённая логика, у вас может быть своя
+    base = salary_options[ginfo["salary_option"]].get(emoji, 0)
+    deduct_map = {"0": 1500, "1": 2100, "2": 3000, "3": 4500}
+    deduct = deduct_map.get(status_code, 0)
+
+    ginfo["salary"] += base
+    conn = await db.db_pool.acquire()
+    try:
+        await conn.execute("UPDATE group_financial_data SET salary=$1 WHERE group_key=$2", ginfo["salary"], gk)
+        row = await conn.fetchrow(
+            "SELECT user_id FROM bookings WHERE group_key=$1 AND day=$2 AND time_slot=$3",
+            gk, day, slot,
+        )
+        if not row:
+            return await cb.answer(get_message(lang, "no_such_booking"), show_alert=True)
+        booked = row["user_id"]
+        await update_user_financial_info(booked, -deduct, bot)
+        bal_row = await conn.fetchrow("SELECT balance FROM users WHERE user_id=$1", booked)
+        bal = bal_row["balance"] if bal_row else 0
+        msg = get_message(lang, "changed_balance_user", op="-", amount=deduct, balance=bal)
+        await bot.send_message(booked, format_html_pre(msg), parse_mode=ParseMode.HTML)
+    finally:
+        await db.db_pool.release(conn)
+
+    # Обновляем сообщение в группе
+    try:
+        await update_group_message(bot, gk)
+    except TelegramBadRequest:
+        pass
+
+    await send_financial_report(bot)
+    await cb.answer("Оплата (agent) учтена.")
+
+
 async def update_user_financial_info(user_id: int, net_amount: int, bot: Bot):
+    """
+    Прибавляем (или вычитаем, если net_amount < 0) net_amount к балансу и профиту user_id
+    """
+    if not db.db_pool:
+        return
     try:
         member = await bot.get_chat_member(user_id, user_id)
         uname = member.user.username or f"{member.user.first_name} {member.user.last_name}"
     except:
-        uname = "Unknown"
+        uname = f"User_{user_id}"
     conn = await db.db_pool.acquire()
     try:
         row = await conn.fetchrow(
@@ -338,11 +516,18 @@ async def update_user_financial_info(user_id: int, net_amount: int, bot: Bot):
 
 
 async def apply_additional_payment(user_id: int, status_code: str, bot: Bot):
+    """
+    Если нужно доплачивать особому пользователю (SPECIAL_USER_ID), не путать с apply_special_user_reward().
+    Можно объединить, если логика дублируется.
+    """
     if user_id != SPECIAL_USER_ID:
         return
     extra = special_payments.get(status_code, 0)
     if extra <= 0:
         return
+    if not db.db_pool:
+        return
+
     conn = await db.db_pool.acquire()
     try:
         row = await conn.fetchrow("SELECT balance FROM users WHERE user_id=$1", user_id)
@@ -369,94 +554,11 @@ async def apply_additional_payment(user_id: int, status_code: str, bot: Bot):
         await db.db_pool.release(conn)
 
 
-async def handle_agent_payment(cb: CallbackQuery, gk: str, day: str, slot: str, status_code: str):
-    bot = cb.bot
-    uid = cb.from_user.id
-    lang = await get_user_language(uid)
-    emoji = status_mapping.get(status_code)
-    if not emoji:
-        return await cb.answer("Некорректный статус!", show_alert=True)
-    ginfo = groups_data.get(gk)
-    if not ginfo:
-        return await cb.answer("Нет такой группы!", show_alert=True)
-
-    base = salary_options[ginfo["salary_option"]].get(emoji, 0)
-    deduct_map = {"0": 1500, "1": 2100, "2": 3000, "3": 4500}
-    deduct = deduct_map.get(status_code, 0)
-
-    ginfo["salary"] += base
-    conn = await db.db_pool.acquire()
-    try:
-        await conn.execute("UPDATE group_financial_data SET salary=$1 WHERE group_key=$2", ginfo["salary"], gk)
-        row = await conn.fetchrow(
-            "SELECT user_id FROM bookings WHERE group_key=$1 AND day=$2 AND time_slot=$3",
-            gk, day, slot,
-        )
-        if not row:
-            return await cb.answer(get_message(lang, "no_such_booking"), show_alert=True)
-        booked = row["user_id"]
-        await update_user_financial_info(booked, -deduct, bot)
-        bal_row = await conn.fetchrow("SELECT balance FROM users WHERE user_id=$1", booked)
-        bal = bal_row["balance"] if bal_row else 0
-        msg = get_message(lang, "changed_balance_user", op="-", amount=deduct, balance=bal)
-        await bot.send_message(booked, format_html_pre(msg), parse_mode=ParseMode.HTML)
-    finally:
-        await db.db_pool.release(conn)
-
-    try:
-        await update_group_message(bot, gk)
-    except TelegramBadRequest:
-        pass
-
-    await send_financial_report(bot)
-    await cb.answer("Оплата agent OK.")
-
-
-@router.callback_query(F.data.startswith("payment_method|"))
-async def process_payment_method(cb: CallbackQuery, state: FSMContext):
-    parts = cb.data.split("|")
-    _, gk, day, slot, code, method = parts
-    lang = await get_user_language(cb.from_user.id)
-    ginfo = groups_data.get(gk)
-    if not ginfo or cb.message.chat.id != ginfo["chat_id"]:
-        return await cb.answer(get_message(lang, "no_permission"), show_alert=True)
-    member = await cb.bot.get_chat_member(cb.message.chat.id, cb.from_user.id)
-    if member.status not in ("administrator", "creator"):
-        return await cb.answer(get_message(lang, "no_permission"), show_alert=True)
-
-    conn = await db.db_pool.acquire()
-    try:
-        row = await conn.fetchrow(
-            "SELECT user_id FROM bookings WHERE group_key=$1 AND day=$2 AND time_slot=$3",
-            gk, day, slot,
-        )
-        if not row:
-            return await cb.answer(get_message(lang, "no_such_booking"), show_alert=True)
-    finally:
-        await db.db_pool.release(conn)
-
-    await cb.answer()
-    if method in ("cash", "beznal"):
-        txt = get_message(lang, "enter_payment_amount")
-        await state.update_data(
-            group_key=gk, day=day, time_slot=slot, status_code=code, payment_method=method
-        )
-        try:
-            await cb.bot.edit_message_text(
-                chat_id=cb.message.chat.id,
-                message_id=cb.message.message_id,
-                text=format_html_pre(txt),
-                parse_mode=ParseMode.HTML,
-            )
-        except TelegramBadRequest:
-            pass
-        await state.set_state(BookPaymentStates.waiting_for_amount)
-    else:  # agent
-        await handle_agent_payment(cb, gk, day, slot, code)
-
-
 @router.message(StateFilter(BookPaymentStates.waiting_for_amount), F.text)
 async def process_payment_amount(message: Message, state: FSMContext):
+    """
+    Обработка цифры, введённой админом (сумма оплаты).
+    """
     user = message.from_user
     lang = await get_user_language(user.id)
     data = await state.get_data()
@@ -473,6 +575,10 @@ async def process_payment_amount(message: Message, state: FSMContext):
     if not emoji:
         await state.clear()
         return await message.reply(get_message(lang, "invalid_data"))
+
+    if not db.db_pool:
+        await state.clear()
+        return await message.reply("Нет соединения с БД.")
 
     conn = await db.db_pool.acquire()
     try:
@@ -508,6 +614,7 @@ async def process_payment_amount(message: Message, state: FSMContext):
         await update_user_financial_info(booked, net, message.bot)
         await apply_additional_payment(booked, str(code), message.bot)
 
+        # Если есть distribution_variant, начисляем целевому пользователю
         var = groups_data[gk].get("distribution_variant")
         dist_data = distribution_variants.get(var, distribution_variants["variant_400"])
         dist_amt = dist_data.get(str(code), 0)
@@ -526,22 +633,20 @@ async def process_payment_amount(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(f"Учли оплату {amt} (метод={method}), статус={emoji}.")
 
+
 async def update_group_message(bot: Bot, group_key: str):
     """
-    Обновляет сообщение в чате группы:
-      • Текст: salary, cash и уже завершённые слоты (status ≠ 'booked')
-      • Кнопки: только текущие «booked»-слоты
-      • Между сегодня/завтра — неактивный разделитель
-      • Сохраняет message_id в памяти и БД
+    Перерисовывает сообщение в группе (chat_id, message_id),
+    показывая актуальные статусы слотов и кнопки для тех, что ещё в состоянии 'booked'.
     """
     from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from utils.text_utils import format_html_pre
 
     ginfo = groups_data[group_key]
     chat_id = ginfo["chat_id"]
-    user_lang = "ru"  # или LANG_DEFAULT
+    user_lang = "ru"  # при желании можно хранить язык для группы отдельно
 
-    # 1) Формируем текст
-    from utils.text_utils import format_html_pre
+    # 1) Формируем текст (шапка, финансы и т.д.)
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         f"━━━━━━  🌹🌹 {group_key} 🌹🌹  ━━━━━━",
@@ -551,19 +656,35 @@ async def update_group_message(bot: Bot, group_key: str):
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         f"⏰ {get_message(user_lang,'booking_report')} ⏰",
     ]
-    final = {'❌❌❌', '✅', '✅2', '✅✅', '✅✅✅'}
-    for day in ("Сегодня","Завтра"):
+
+    # Для отображения финальных статусов нам нужно знать эмодзи юзеров
+    async def get_user_emoji(uid: int) -> str:
+        if not uid or not db.db_pool:
+            return "❓"
+        try:
+            async with db.db_pool.acquire() as con:
+                row = await con.fetchrow("SELECT emoji FROM user_emojis WHERE user_id=$1", uid)
+                if row and row["emoji"]:
+                    return row["emoji"].split(",")[0]
+        except:
+            pass
+        return "❓"
+
+    # 2) Генерируем блоки для Сегодня/Завтра
+    final_statuses = {'❌❌❌','✅','✅2','✅✅','✅✅✅'}
+    for day in ("Сегодня", "Завтра"):
         lines.append(f"\n{day}:")
         for slot in generate_time_slots():
             st = ginfo["time_slot_statuses"].get((day, slot))
-            if st in final:
+            if st and st in final_statuses:
+                # Слот уже имеет окончательный статус -> показываем в тексте
                 uid = ginfo["slot_bookers"].get((day, slot))
-                emoji = await get_user_language(uid) if uid else "?"
-                lines.append(f"{slot} {st} {emoji}")
+                user_emoji = await get_user_emoji(uid)
+                lines.append(f"{slot} {st} {user_emoji}")
 
     text = format_html_pre("\n".join(lines))
 
-    # 2) Удаляем старое сообщение
+    # 3) Удаляем старое сообщение, если оно есть
     old_id = ginfo.get("message_id")
     if old_id:
         try:
@@ -571,43 +692,51 @@ async def update_group_message(bot: Bot, group_key: str):
         except:
             pass
 
-    # 3) Строим кнопки через билд
+    # 4) Строим клавиатуру: кнопки для слотов, которые сейчас `booked`
     builder = InlineKeyboardBuilder()
     for day in ("Сегодня","Завтра"):
         for slot in generate_time_slots():
             st = ginfo["time_slot_statuses"].get((day, slot))
-            if st == "booked" or st is None:
+            # Если слот `booked` (ещё не получил финальный статус) — делаем кнопку
+            if st == "booked":
                 builder.button(
                     text=f"{day} {slot}",
                     callback_data=f"group_time|{group_key}|{day}|{slot}"
                 )
-        # разделитель между днями
+        # Разделитель между днями
         builder.button(text="──────────", callback_data="ignore")
 
     builder.adjust(1)
     kb = builder.as_markup()
 
-    # 4) Отправляем новое сообщение и сохраняем ID
+    # 5) Отправляем новое сообщение и сохраняем его message_id
     msg = await bot.send_message(
         chat_id, text=text, parse_mode=ParseMode.HTML, reply_markup=kb
     )
     ginfo["message_id"] = msg.message_id
 
-    # 5) Сохраняем в БД
-    conn = await db.db_pool.acquire()
-    try:
-        await conn.execute(
-            "UPDATE group_financial_data SET message_id=$1 WHERE group_key=$2",
-            msg.message_id, group_key
-        )
-    finally:
-        await db.db_pool.release(conn)
+    # 6) Обновляем в БД
+    if db.db_pool:
+        conn = await db.db_pool.acquire()
+        try:
+            await conn.execute(
+                "UPDATE group_financial_data SET message_id=$1 WHERE group_key=$2",
+                msg.message_id, group_key
+            )
+        finally:
+            await db.db_pool.release(conn)
+
 
 async def send_financial_report(bot: Bot):
+    """
+    Отправляет сводный финансовый отчёт в FINANCIAL_REPORT_GROUP_ID.
+    Можно вызывать после каждого изменения.
+    """
     if not db.db_pool:
         return
     total_sal = sum(g["salary"] for g in groups_data.values())
     total_cash= sum(g["cash"]   for g in groups_data.values())
+
     conn = await db.db_pool.acquire()
     try:
         rows = await conn.fetch("SELECT balance FROM users")
@@ -627,6 +756,7 @@ async def send_financial_report(bot: Bot):
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     ]
 
+    # Сводка по пользователям
     conn = await db.db_pool.acquire()
     try:
         rows = await conn.fetch("""
@@ -648,7 +778,7 @@ async def send_financial_report(bot: Bot):
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
     lines.append(f"Сумма балансов пользователей: {users_total}¥")
     total_final = itog1 - users_total
-    lines.append(f"━━━━ TOTAL (итog1 - балансы) = {total_final}¥ ━━━━")
+    lines.append(f"━━━━ TOTAL (итог1 - балансы) = {total_final}¥ ━━━━")
 
     report = "<pre>" + "\n".join(lines) + "</pre>"
     try:
@@ -659,6 +789,9 @@ async def send_financial_report(bot: Bot):
 
 @router.callback_query(F.data == "view_all_bookings", StateFilter("*"))
 async def cmd_all(cb: CallbackQuery, state: FSMContext):
+    """
+    Пример обработчика для просмотра всех броней (если вам нужно).
+    """
     lang = await get_user_language(cb.from_user.id)
     from utils.text_utils import format_html_pre
 
