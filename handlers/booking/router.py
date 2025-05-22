@@ -31,10 +31,10 @@ from constants.booking_const import (
     FINAL_BOOKED_IMG,
     special_payments,
     status_mapping,
-    salary_options,
     distribution_variants,
     groups_data,
 )
+from constants.salary import salary_options
 from utils.user_utils import get_user_language
 from utils.text_utils import get_message, format_html_pre
 from utils.time_utils import (
@@ -49,7 +49,7 @@ from app_states import BookUserStates, BookPaymentStates
 logger = logging.getLogger(__name__)
 router = Router()
 
-repo     = BookingRepo(db.db_pool)
+repo = BookingRepo()
 data_mgr = BookingDataManager(groups_data)
 
 @router.message(Command("book"))
@@ -88,28 +88,63 @@ async def user_select_group(cb: CallbackQuery, state: FSMContext):
     await state.set_state(BookUserStates.waiting_for_day)
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_day), F.data.startswith("bkday_"))
-async def user_select_day(cb: CallbackQuery, state: FSMContext):
-    day = cb.data.removeprefix("bkday_")
+async def send_time_slots(callback_query: CallbackQuery, state: FSMContext):
+    """
+    После выбора «Сегодня»/«Завтра» показывает пользователю свободные слоты.
+    Использует generate_daily_time_slots и учитывает:
+      • уже забронированные слоты (booked_slots),
+      • слоты, помеченные unavailable,
+      • слоты с любым статусом из occupied_statuses.
+    Внизу добавляет кнопку «Назад» чтобы вернуться к выбору группы.
+    """
+    # 1) Получаем выбранный день и сохраняем в FSM
+    selected_day = callback_query.data.removeprefix("bkday_")  # "Сегодня" или "Завтра"
+    await state.update_data(selected_day=selected_day)
+
+    # 2) Берём из FSM выбранную группу и её данные
     data = await state.get_data()
-    gk = data["selected_group"]
-    ginfo = groups_data[gk]
-    busy = set(ginfo["booked_slots"][day]) | ginfo["unavailable_slots"][day]
+    group_key = data["selected_group"]
+    ginfo = groups_data[group_key]
 
-    rows, buf = [], []
-    for slot in generate_time_slots():
-        if slot not in busy:
-            buf.append(InlineKeyboardButton(text=slot, callback_data=f"bkslot_{slot.replace(':','_')}"))
-        if len(buf)==4:
-            rows.append(buf); buf=[]
-    if buf: rows.append(buf)
+    # 3) Собираем клавиатуру со слотами
+    slots = generate_time_slots()  # alias для generate_daily_time_slots
+    kb = InlineKeyboardMarkup(row_width=4)
+    occupied_statuses = {'unavailable', '❌❌❌', '✅', '✅2', '✅✅', '✅✅✅', 'booked'}
 
-    kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await state.update_data(selected_day=day)
+    for slot in slots:
+        key = (selected_day, slot)
+        # пропускаем, если в booked_slots или unavailable_slots или имеет статус в time_slot_statuses
+        if (
+            slot in ginfo["booked_slots"].get(selected_day, [])
+            or slot in ginfo["unavailable_slots"].get(selected_day, set())
+            or ginfo["time_slot_statuses"].get(key) in occupied_statuses
+        ):
+            continue
+
+        kb.insert(
+            InlineKeyboardButton(
+                text=slot,
+                callback_data=f"bkslot_{slot.replace(':','_')}"
+            )
+        )
+
+    # Кнопка «Назад» в меню выбора группы
+    kb.add(
+        InlineKeyboardButton(text="« Назад", callback_data="bkgrp_back")
+    )
+
+    # 4) Редактируем медиа (или отправляем новое)
     try:
-        await cb.message.edit_media(media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=""), reply_markup=kb)
+        await callback_query.message.edit_media(
+            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=""),
+            reply_markup=kb
+        )
     except TelegramBadRequest:
-        await cb.message.answer_photo(photo=TIME_CHOICE_IMG, caption="", reply_markup=kb)
-    await cb.answer()
+        await callback_query.message.answer_photo(
+            photo=TIME_CHOICE_IMG, caption="", reply_markup=kb
+        )
+
+    await callback_query.answer()
     await state.set_state(BookUserStates.waiting_for_time)
 
 async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
@@ -467,51 +502,105 @@ async def process_payment_amount(message: Message, state: FSMContext):
     await message.answer(f"Учли оплату {amt} (метод={method}), статус={emoji}.")
 
 async def update_group_message(bot: Bot, group_key: str):
-    ginfo = groups_data[gk]
+    """
+    Обновляет сообщение в чате группы:
+      • Текст: salary, cash и уже завершённые слоты (status ≠ 'booked')
+      • Кнопки: только текущие «booked»-слоты (row_width=1)
+      • Между сегодня/завтра в кнопках — неактивный разделитель
+      • Сохраняет message_id в памяти и БД
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from constants.booking_const import groups_data, LANG_DEFAULT
+    from utils.text_utils import format_html_pre
+    from utils.user_utils import get_user_language
+    from constants.salary import salary_options
+    from utils.time_utils import generate_daily_time_slots as generate_time_slots
+
+    ginfo = groups_data[group_key]
+    chat_id = ginfo["chat_id"]
+    user_lang = LANG_DEFAULT
+
+    # 1) Собираем текст: шапка + salary/cash + завершённые слоты
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"Группа: {gk}",
-        f"Зарплата: {ginfo['salary']} ¥",
-        f"Наличные: {ginfo['cash']} ¥",
+        f"━━━━━━  🌹🌹 {group_key} 🌹🌹  ━━━━━━",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"{get_message(user_lang,'salary')}: {ginfo.get('salary',0)}¥",
+        f"{get_message(user_lang,'cash')}:   {ginfo.get('cash',0)}¥",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"⏰ {get_message(user_lang,'booking_report')} ⏰",
         "Сегодня:"
     ]
-    final_st = {'❌❌❌','✅','✅2','✅✅','✅✅✅','booked'}
+    final_statuses = {'❌❌❌', '✅', '✅2', '✅✅', '✅✅✅'}
     for slot in generate_time_slots():
-        st = ginfo["time_slot_statuses"].get(("Сегодня", slot), "")
-        if st in final_st:
+        status = ginfo["time_slot_statuses"].get(("Сегодня", slot))
+        if status in final_statuses:
             uid = ginfo["slot_bookers"].get(("Сегодня", slot))
-            em = await get_user_language(uid) if uid else "?"
-            lines.append(f"{slot} {st} {em}")
+            emoji = (await get_user_language(uid)) if uid else "?"
+            lines.append(f"{slot} {status} {emoji}")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     lines.append("Завтра:")
     for slot in generate_time_slots():
-        st = ginfo["time_slot_statuses"].get(("Завтра", slot), "")
-        if st in final_st:
+        status = ginfo["time_slot_statuses"].get(("Завтра", slot))
+        if status in final_statuses:
             uid = ginfo["slot_bookers"].get(("Завтра", slot))
-            em = await get_user_language(uid) if uid else "?"
-            lines.append(f"{slot} {st} {em}")
+            emoji = (await get_user_language(uid)) if uid else "?"
+            lines.append(f"{slot} {status} {emoji}")
 
     text = format_html_pre("\n".join(lines))
-    old = ginfo.get("message_id")
-    if old:
-        try: await bot.delete_message(ginfo["chat_id"], old)
-        except: pass
 
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    for d in ("Сегодня","Завтра"):
-        for s in ginfo["booked_slots"][d]:
-            builder.button(text=f"{d} {s}", callback_data=f"group_time|{gk}|{d}|{s}")
-    builder.adjust(2)
-    kb = builder.as_markup()
+    # 2) Удаляем старое сообщение
+    old_id = ginfo.get("message_id")
+    if old_id:
+        try:
+            await bot.delete_message(chat_id, old_id)
+        except:
+            pass
 
+    # 3) Формируем клавиатуру: только "booked"-слоты
+    kb = InlineKeyboardMarkup(row_width=1)
+    # Сегодня
+    for slot in generate_time_slots():
+        status = ginfo["time_slot_statuses"].get(("Сегодня", slot))
+        if status == "booked" or status is None:
+            kb.add(InlineKeyboardButton(
+                text=f"Сегодня {slot}",
+                callback_data=f"group_time|{group_key}|Сегодня|{slot}"
+            ))
+    # Разделитель
+    kb.add(InlineKeyboardButton(text="⏰Бронирования завтра⏰", callback_data="ignore"))
+    # Завтра
+    for slot in generate_time_slots():
+        status = ginfo["time_slot_statuses"].get(("Завтра", slot))
+        if status == "booked" or status is None:
+            kb.add(InlineKeyboardButton(
+                text=f"Завтра {slot}",
+                callback_data=f"group_time|{group_key}|Завтра|{slot}"
+            ))
+
+    # 4) Отправляем новое сообщение и сохраняем ID
     try:
-        msg = await bot.send_message(ginfo["chat_id"], text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        msg = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb
+        )
         ginfo["message_id"] = msg.message_id
+
+        # Обновляем эту информацию в БД
+        conn = await db.db_pool.acquire()
+        try:
+            await conn.execute(
+                "UPDATE group_financial_data SET message_id=$1 WHERE group_key=$2",
+                msg.message_id, group_key
+            )
+        finally:
+            await db.db_pool.release(conn)
+
     except Exception as e:
-        logger.error(f"Ошибка pinned: {e}")
+        logger.error(f"Не удалось обновить групп. сообщение для {group_key}: {e}")
 
 async def send_financial_report(bot: Bot):
     if not db.db_pool:

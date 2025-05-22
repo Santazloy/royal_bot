@@ -1,4 +1,3 @@
-# main.py
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
@@ -6,21 +5,29 @@ from aiogram.types import BotCommand
 
 from config import TELEGRAM_BOT_TOKEN
 import db  # <--- импортируем модуль db целиком
-from handlers import mamasan
+
 from handlers.news import router as news_router
 from handlers.idphoto import router as idphoto_router
 from handlers.group_id import router as group_id_router
 from handlers.startemoji import router as startemoji_router
 from handlers.booking.router import router as booking_router
-from handlers.mamasan import mamasan_router
+from handlers.salary import salary_router
 from handlers.menu import menu_router
+# Новый импорт загрузчика слотов
+from handlers.booking.loader import load_slots_from_db
+
 async def main():
     logging.basicConfig(level=logging.INFO)
 
     # 1) Инициализируем пул
     await db.init_db_pool()
+
     # 2) Создаём таблицы
     await db.create_tables()
+
+    # 3) Загружаем слоты и статусы в память из БД
+    await load_slots_from_db()
+    logging.info("Слоты и статусы загружены из БД в память.")
 
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
@@ -31,10 +38,8 @@ async def main():
     dp.include_router(group_id_router)
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
+    dp.include_router(salary_router)
     dp.include_router(menu_router)
-    dp.include_router(mamasan_router)
-    # Пример использования функции из mamasan
-
 
     # Устанавливаем команды
     await bot.set_my_commands([
