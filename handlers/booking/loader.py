@@ -1,6 +1,6 @@
 # handlers/booking/loader.py
 
-from db_access.booking import BookingRepo
+from db_access.booking_repo import BookingRepo
 from constants.booking_const import groups_data
 
 # инициализируем один раз, при импорте

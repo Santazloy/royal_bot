@@ -42,16 +42,16 @@ from utils.time_utils import (
     get_adjacent_time_slots,
     get_slot_datetime_shanghai,
 )
-from db_access.booking import BookingRepo
+from db_access.booking_repo import BookingRepo
 from app_states import BookUserStates, BookPaymentStates
 # в начале router.py
-from handlers.booking.data_manager import BookingDataManager
+from handlers.booking.loader import BookingRepo
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 repo = BookingRepo()
-data_mgr = BookingDataManager(groups_data)
+data_mgr = BookingRepo(groups_data)
 # и сразу загрузите из БД:
 
 
