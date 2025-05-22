@@ -1,4 +1,5 @@
 # handlers/menu.py
+
 import logging
 from aiogram import Router, F, types
 from aiogram.types import (
@@ -9,9 +10,16 @@ from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-# Импортируем из booking.py то, что нужно:
-# (groups_data, BookUserStates, ...), если нужно
-from handlers.booking import groups_data, BookUserStates, GROUP_CHOICE_IMG, DAY_CHOICE_IMG, TIME_CHOICE_IMG, FINAL_BOOKED_IMG
+# Правильные импорты констант и стейтов
+from constants.booking_const import (
+    groups_data,
+    GROUP_CHOICE_IMG,
+    DAY_CHOICE_IMG,
+    TIME_CHOICE_IMG,
+    FINAL_BOOKED_IMG,
+)
+from app_states import BookUserStates
+
 from handlers.news import cmd_show_news
 
 menu_router = Router()

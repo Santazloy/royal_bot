@@ -1,0 +1,76 @@
+# constants/booking_const.py
+
+# Язык по умолчанию
+LANG_DEFAULT = "ru"
+
+# ID специальных пользователей и групп
+SPECIAL_USER_ID           = 7935161063
+FINANCIAL_REPORT_GROUP_ID = -1002216239869
+BOOKING_REPORT_GROUP_ID   = -1002671780634
+
+# Картинки для процесса бронирования
+GROUP_CHOICE_IMG    = "AgACAgUAAxkBAAPEaCLqGa_Je6K719LIIw-SalFZGKwAApXIMRtGDhFVcKvqCsVNQhoBAAMCAAN5AAM2BA"
+DAY_CHOICE_IMG      = "AgACAgUAAyEFAASVOrsCAAIBIWgjGN8CFKl7LksPnw7kUM9Pa_Y4AAJwxTEbBqYZVVVm0Imq2SzOAQADAgADeQADNgQ"
+TIME_CHOICE_IMG     = "AgACAgUAAyEFAASVOrsCAAIBI2gjGQi1nO6oor4Tc0-ejS-SVHO7AAJzxTEbBqYZVe5LXINfOjmGAQADAgADeQADNgQ"
+FINAL_BOOKED_IMG    = "AgACAgUAAxkBAAPaaCMZb2OnhzHpAyOAMqt6uhntxCwAAtPDMRtGDhlVrgSlAsRFRSoBAAMCAAN5AAM2BA"
+
+# Начисления спецпользователю
+special_payments = {
+    '0':  40,
+    '1':  40,
+    '2':  80,
+    '3': 120,
+}
+
+# Отображение статуса эмодзи
+status_mapping = {
+    '0':  '✅',
+    '1':  '✅2',
+    '2': '✅✅',
+    '3': '✅✅✅',
+    '-1':'❌❌❌',
+}
+
+# Опции зарплаты
+salary_options = {
+    1: {'✅':700,  '✅2':900,  '✅✅':1400, '✅✅✅':2100},
+    2: {'✅':800,  '✅2':1000, '✅✅':1600, '✅✅✅':2400},
+    3: {'✅':900,  '✅2':1100, '✅✅':1800, '✅✅✅':2700},
+    4: {'✅':1000, '✅2':1200, '✅✅':2000, '✅✅✅':3000},
+}
+
+# Варианты распределения бонусов
+distribution_variants = {
+    'variant_100': {'0':100, '1':100, '2':200, '3':300},
+    'variant_200': {'0':200, '1':200, '2':400, '3':600},
+    'variant_300': {'0':300, '1':300, '2':600, '3':900},
+    'variant_400': {'0':400, '1':400, '2':800, '3':1200},
+}
+
+# Начальные данные по группам
+groups_data = {
+    "Royal_1": {"chat_id": -1002503654146, "salary_option":1, "salary":0, "cash":0,
+                "time_slot_statuses":{}, "unavailable_slots":{"Сегодня":set(),"Завтра":set()},
+                "booked_slots":{"Сегодня":[],"Завтра":[]},"slot_bookers":{},
+                "target_id":None, "distribution_variant":None, "message_id":None},
+    "Royal_2": {"chat_id": -1002569987326, "salary_option":1, "salary":0, "cash":0,
+                "time_slot_statuses":{}, "unavailable_slots":{"Сегодня":set(),"Завтра":set()},
+                "booked_slots":{"Сегодня":[],"Завтра":[]},"slot_bookers":{},
+                "target_id":None, "distribution_variant":None, "message_id":None},
+    "Royal_3": {"chat_id": -1002699377044, "salary_option":1, "salary":0, "cash":0,
+                "time_slot_statuses":{}, "unavailable_slots":{"Сегодня":set(),"Завтра":set()},
+                "booked_slots":{"Сегодня":[],"Завтра":[]},"slot_bookers":{},
+                "target_id":None, "distribution_variant":None, "message_id":None},
+    "Royal_4": {"chat_id": -1002696765874, "salary_option":1, "salary":0, "cash":0,
+                "time_slot_statuses":{}, "unavailable_slots":{"Сегодня":set(),"Завтра":set()},
+                "booked_slots":{"Сегодня":[],"Завтра":[]},"slot_bookers":{},
+                "target_id":None, "distribution_variant":None, "message_id":None},
+    "Royal_5": {"chat_id": -1002555587028, "salary_option":1, "salary":0, "cash":0,
+                "time_slot_statuses":{}, "unavailable_slots":{"Сегодня":set(),"Завтра":set()},
+                "booked_slots":{"Сегодня":[],"Завтра":[]},"slot_bookers":{},
+                "target_id":None, "distribution_variant":None, "message_id":None},
+    "Royal_6": {"chat_id": -1002525751059, "salary_option":1, "salary":0, "cash":0,
+                "time_slot_statuses":{}, "unavailable_slots":{"Сегодня":set(),"Завтра":set()},
+                "booked_slots":{"Сегодня":[],"Завтра":[]},"slot_bookers":{},
+                "target_id":None, "distribution_variant":None, "message_id":None},
+}
