@@ -6,9 +6,12 @@ import db
 logger = logging.getLogger(__name__)
 
 class BookingRepo:
-    def __init__(self):
-        # пул будет получен динамически из модуля db
-        pass
+    def __init__(self, pool):
+        """
+        Репозиторий для работы с бронированиями.
+        При инициализации передаётся asyncpg.Pool.
+        """
+        self.pool = pool
 
     async def add_booking(
         self,
@@ -19,9 +22,14 @@ class BookingRepo:
         start_time: str
     ) -> None:
         """
-        Создаёт новый booking и сразу помечает его статусом 'booked'.
+        Создаёт новый booking и сразу ставит ему статус 'booked'
+        как в таблице bookings, так и в group_time_slot_statuses.
         """
         pool = db.db_pool
+        if not pool:
+            logger.error("db_pool is None при add_booking")
+            return
+
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -32,7 +40,8 @@ class BookingRepo:
             )
             await conn.execute(
                 """
-                INSERT INTO group_time_slot_statuses (group_key, day, time_slot, status, user_id)
+                INSERT INTO group_time_slot_statuses
+                    (group_key, day, time_slot, status, user_id)
                 VALUES ($1, $2, $3, 'booked', $4)
                 ON CONFLICT (group_key, day, time_slot)
                 DO UPDATE SET status = excluded.status, user_id = excluded.user_id
@@ -48,13 +57,18 @@ class BookingRepo:
         user_id: int
     ) -> None:
         """
-        Помечает указанный таймслот как недоступный (unavailable).
+        Помечает указанный тайм-слот как 'unavailable' в group_time_slot_statuses.
         """
         pool = db.db_pool
+        if not pool:
+            logger.error("db_pool is None при mark_unavailable")
+            return
+
         async with pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO group_time_slot_statuses (group_key, day, time_slot, status, user_id)
+                INSERT INTO group_time_slot_statuses
+                    (group_key, day, time_slot, status, user_id)
                 VALUES ($1, $2, $3, 'unavailable', $4)
                 ON CONFLICT (group_key, day, time_slot)
                 DO UPDATE SET status = excluded.status, user_id = excluded.user_id

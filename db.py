@@ -3,7 +3,7 @@ import os
 import logging
 import asyncpg
 
-db_pool = None
+db_pool: asyncpg.pool.Pool | None = None
 
 async def init_db_pool():
     global db_pool
@@ -11,12 +11,15 @@ async def init_db_pool():
     if conn_str:
         logging.info("Подключаемся к БД: %s", conn_str)
     else:
-        PGHOST = os.getenv("PGHOST", "")
-        PGPORT = os.getenv("PGPORT", "5432")
-        PGUSER = os.getenv("PGUSER", "")
+        PGHOST     = os.getenv("PGHOST", "")
+        PGPORT     = os.getenv("PGPORT", "5432")
+        PGUSER     = os.getenv("PGUSER", "")
         PGPASSWORD = os.getenv("PGPASSWORD", "")
         PGDATABASE = os.getenv("PGDATABASE", "")
-        conn_str = f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}?sslmode=require"
+        conn_str = (
+            f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
+            "?sslmode=require"
+        )
         logging.info("Подключаемся к БД: %s", conn_str)
 
     db_pool = await asyncpg.create_pool(dsn=conn_str)
@@ -27,24 +30,72 @@ async def create_tables():
         raise RuntimeError("db_pool is None! Сначала вызовите init_db_pool().")
 
     async with db_pool.acquire() as conn:
-        # Создаём таблицу news
+        # 1) Таблица bookings
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS bookings (
+                group_key TEXT NOT NULL,
+                day TEXT NOT NULL,
+                time_slot TEXT NOT NULL,
+                user_id BIGINT NOT NULL,
+                status TEXT NOT NULL,          -- 'booked' и т.п.
+                status_code TEXT,             -- код для финансовой логики
+                start_time TIMESTAMPTZ,
+                payment_method TEXT,
+                amount INTEGER,
+                PRIMARY KEY (group_key, day, time_slot, user_id)
+            );
+        """)
+
+        # 2) Таблица статусов слотов
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_time_slot_statuses (
+                group_key TEXT NOT NULL,
+                day TEXT NOT NULL,
+                time_slot TEXT NOT NULL,
+                status TEXT NOT NULL,          -- 'booked', 'unavailable', '✅', '❌❌❌' и т.п.
+                user_id BIGINT,
+                PRIMARY KEY (group_key, day, time_slot)
+            );
+        """)
+
+        # 3) Финансовая таблица по группам
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_financial_data (
+                group_key TEXT PRIMARY KEY,
+                salary_option INTEGER NOT NULL DEFAULT 1,
+                salary BIGINT   NOT NULL DEFAULT 0,
+                cash   BIGINT   NOT NULL DEFAULT 0,
+                message_id BIGINT
+            );
+        """)
+
+        # 4) Пользователи и их балансы
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                balance BIGINT   NOT NULL DEFAULT 0,
+                profit  BIGINT   NOT NULL DEFAULT 0,
+                monthly_profit BIGINT NOT NULL DEFAULT 0
+            );
+        """)
+
+        # 5) Старые таблицы news и user_emojis
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS news (
                 id BIGSERIAL PRIMARY KEY,
                 file_ids TEXT,
                 text TEXT
-            )
+            );
         """)
-
-        # Создаём таблицу user_emojis
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_emojis (
                 user_id BIGINT PRIMARY KEY,
                 emoji TEXT DEFAULT ''
-            )
+            );
         """)
 
-        logging.info("Таблицы news и user_emojis созданы/проверены.")
+        logging.info("Все таблицы созданы или проверены.")
 
 async def close_db_pool():
     global db_pool
