@@ -1,17 +1,9 @@
-# handlers/booking/router.py
-
 import logging
 import html
-from datetime import timedelta
-from zoneinfo import ZoneInfo
-
 from aiogram import Bot, Router, F
 from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
+    Message, CallbackQuery,
+    InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 )
 from aiogram.filters.command import Command
 from aiogram.filters import StateFilter
@@ -22,38 +14,29 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
 from constants.booking_const import (
-    BOOKING_REPORT_GROUP_ID,
-    SPECIAL_USER_ID,
-    FINANCIAL_REPORT_GROUP_ID,
-    GROUP_CHOICE_IMG,
-    DAY_CHOICE_IMG,
-    TIME_CHOICE_IMG,
-    FINAL_BOOKED_IMG,
-    special_payments,
-    status_mapping,
-    distribution_variants,
-    groups_data,
+    BOOKING_REPORT_GROUP_ID, SPECIAL_USER_ID, FINANCIAL_REPORT_GROUP_ID,
+    GROUP_CHOICE_IMG, DAY_CHOICE_IMG, TIME_CHOICE_IMG, FINAL_BOOKED_IMG,
+    special_payments, status_mapping, distribution_variants, groups_data
 )
 from constants.salary import salary_options
 from utils.user_utils import get_user_language
 from utils.text_utils import get_message, format_html_pre
 from utils.time_utils import (
     generate_daily_time_slots as generate_time_slots,
-    get_adjacent_time_slots,
-    get_slot_datetime_shanghai,
+    get_adjacent_time_slots, get_slot_datetime_shanghai
 )
+
+# **правильный** импорт BookingRepo и дата-менеджера
 from db_access.booking_repo import BookingRepo
+from handlers.booking.data_manager import BookingDataManager
+
 from app_states import BookUserStates, BookPaymentStates
-# в начале router.py
-from handlers.booking.loader import BookingRepo
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-repo = BookingRepo()
-data_mgr = BookingRepo(groups_data)
-# и сразу загрузите из БД:
-
+repo = BookingRepo(db.db_pool)
+data_mgr = BookingDataManager(groups_data)
 
 
 @router.message(Command("book"))
@@ -62,7 +45,7 @@ async def cmd_book(message: Message, state: FSMContext):
     keys = data_mgr.list_group_keys()
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=k, callback_data=f"bkgrp_{k}") for k in keys[i : i + 3]]
+            [InlineKeyboardButton(text=k, callback_data=f"bkgrp_{k}") for k in keys[i:i+3]]
             for i in range(0, len(keys), 3)
         ]
     )
