@@ -40,16 +40,17 @@ async def test_admin_click_status_assigns_and_updates(monkeypatch):
     cb.data = f"group_status|{gk}|{day}|{slot}|{code}"
     cb.message = AsyncMock()
     cb.from_user = SimpleNamespace(id=111)
-    # Настроим права: чат_id совпадает и юзер — админ
     groups_data[gk]["chat_id"] = 999
     cb.message.chat = SimpleNamespace(id=999)
     member = SimpleNamespace(status="creator")
     monkeypatch.setattr(cb.bot, "get_chat_member", AsyncMock(return_value=member))
 
-    # Подменим db.db_pool на фиктивный асинхронный пул
+    # Исправленный фейковый пул
     import db
     fake_conn = AsyncMock()
-    fake_conn.__aenter__.return_value = AsyncMock()
+    fake_conn.fetchrow = AsyncMock(return_value={"balance": 100})
+    fake_conn.execute = AsyncMock()
+    fake_conn.__aenter__.return_value = fake_conn
     fake_conn.__aexit__.return_value = None
 
     class FakePool:
@@ -61,5 +62,5 @@ async def test_admin_click_status_assigns_and_updates(monkeypatch):
     # Запуск
     await admin_click_status(cb)
 
-    # Проверка: после смены статуса предложили оплату (edit_text вызывался)
+    # Проверка
     cb.message.edit_text.assert_awaited()
