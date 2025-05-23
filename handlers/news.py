@@ -1,4 +1,3 @@
-# handlers/news.py
 import json
 import asyncio
 import logging
@@ -12,8 +11,10 @@ from aiogram.filters import Command
 from aiogram.filters.state import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 
 import db
+from handlers.language import get_user_language, get_message
 
 logger = logging.getLogger(__name__)
 
@@ -29,30 +30,31 @@ router = Router()
 
 @router.message(Command("added"))
 async def cmd_added(message: Message, state: FSMContext):
+    lang = await get_user_language(message.from_user.id)
     if not is_user_admin(message.from_user.id):
-        await message.answer("У вас нет прав для управления новостями.")
-        return
+        return await message.answer(get_message(lang, "no_permission"))
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Добавить", callback_data="news_add")],
-        [InlineKeyboardButton(text="Редактировать", callback_data="news_edit")],
-        [InlineKeyboardButton(text="Удалить", callback_data="news_delete")],
-        [InlineKeyboardButton(text="Отменить", callback_data="news_cancel")]
+        [InlineKeyboardButton(text=get_message(lang, "btn_add"),    callback_data="news_add")],
+        [InlineKeyboardButton(text=get_message(lang, "btn_edit"),   callback_data="news_edit")],
+        [InlineKeyboardButton(text=get_message(lang, "btn_delete"), callback_data="news_delete")],
+        [InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="news_cancel")],
     ])
-    msg = await message.answer("Управление новостями:", reply_markup=kb)
+    msg = await message.answer(get_message(lang, "news_manage"), reply_markup=kb)
     await state.update_data(base_chat_id=msg.chat.id, base_message_id=msg.message_id)
 
 @router.callback_query(F.data.in_(["news_add", "news_edit", "news_delete", "news_cancel"]))
 async def process_news_action(callback: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(callback.from_user.id)
     if not is_user_admin(callback.from_user.id):
-        await callback.answer("Нет прав!", show_alert=True)
-        return
+        return await callback.answer(get_message(lang, "no_permission"), show_alert=True)
 
     data = await state.get_data()
     base_chat_id = data.get("base_chat_id")
     base_msg_id = data.get("base_message_id")
     action = callback.data
 
+    # Cancel all
     if action == "news_cancel":
         if base_chat_id and base_msg_id:
             try:
@@ -60,13 +62,13 @@ async def process_news_action(callback: CallbackQuery, state: FSMContext):
             except:
                 pass
         await state.clear()
-        await callback.answer("Отменено.")
-        return
+        return await callback.answer(get_message(lang, "cancelled"))
 
+    # Delete
     if action == "news_delete":
         async with db.db_pool.acquire() as conn:
             await conn.execute("DELETE FROM news")
-        await callback.message.edit_text("Все новости удалены.")
+        await callback.message.edit_text(get_message(lang, "news_deleted_all"))
         await asyncio.sleep(2)
         if base_chat_id and base_msg_id:
             try:
@@ -74,59 +76,62 @@ async def process_news_action(callback: CallbackQuery, state: FSMContext):
             except:
                 pass
         await state.clear()
-        await callback.answer("Готово.")
-        return
+        return await callback.answer(get_message(lang, "done"))
 
+    # Edit
     if action == "news_edit":
-        await callback.message.edit_text(
-            "Редактирование (демо). Пришлите новый текст — обновим запись c id=1."
-        )
+        await callback.message.edit_text(get_message(lang, "news_edit_prompt"))
         await state.set_state(NewsStates.waiting_for_edit_text)
-        await callback.answer()
-    elif action == "news_add":
+        return await callback.answer()
+
+    # Add
+    if action == "news_add":
         await state.update_data(file_ids=[])
-        await callback.message.edit_text("Отправьте до 10 фотографий. После — /done")
+        await callback.message.edit_text(get_message(lang, "news_photos_prompt"))
         await state.set_state(NewsStates.waiting_for_photos)
-        await callback.answer()
+        return await callback.answer()
+
 
 @router.message(StateFilter(NewsStates.waiting_for_photos), F.photo)
 async def process_news_photos(message: Message, state: FSMContext):
+    lang = await get_user_language(message.from_user.id)
     data = await state.get_data()
     file_ids = data.get("file_ids", [])
     if len(file_ids) >= 10:
-        await message.answer("Лимит 10 фото! Введите /done, чтобы завершить.")
-        return
+        return await message.answer(get_message(lang, "news_photo_limit"))
+
     file_ids.append(message.photo[-1].file_id)
     await state.update_data(file_ids=file_ids)
-    await message.answer("Фото получено. Отправьте ещё или /done")
+    await message.answer(get_message(lang, "news_photo_received"))
+
 
 @router.message(Command("done"), StateFilter(NewsStates.waiting_for_photos))
 async def photos_done(message: Message, state: FSMContext):
+    lang = await get_user_language(message.from_user.id)
     data = await state.get_data()
     file_ids = data.get("file_ids", [])
     if not file_ids:
-        await message.answer("Нет фото. /done отменено.")
-        await state.clear()
-        return
+        await message.answer(get_message(lang, "news_no_photos"))
+        return await state.clear()
 
-    await state.update_data(file_ids=file_ids)
     base_chat_id = data.get("base_chat_id")
     base_msg_id = data.get("base_message_id")
-
     if base_chat_id and base_msg_id:
         try:
             await message.bot.edit_message_text(
-                text="Фотографии сохранены. Теперь отправьте текст новости:",
+                text=get_message(lang, "news_photos_saved"),
                 chat_id=base_chat_id,
                 message_id=base_msg_id
             )
-        except:
+        except TelegramBadRequest:
             pass
 
     await state.set_state(NewsStates.waiting_for_text)
 
+
 @router.message(StateFilter(NewsStates.waiting_for_text), F.text)
 async def process_news_text(message: Message, state: FSMContext):
+    lang = await get_user_language(message.from_user.id)
     news_text = message.text.strip()
     data = await state.get_data()
     file_ids = data.get("file_ids", [])
@@ -139,41 +144,40 @@ async def process_news_text(message: Message, state: FSMContext):
         )
 
     await state.clear()
-    await message.answer("Новости успешно сохранены!")
+    await message.answer(get_message(lang, "news_saved"))
+
 
 @router.message(StateFilter(NewsStates.waiting_for_edit_text), F.text)
 async def process_edit_text(message: Message, state: FSMContext):
+    lang = await get_user_language(message.from_user.id)
     new_text = message.text.strip()
     async with db.db_pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE news SET text=$1 WHERE id=1",
-            new_text
-        )
+        await conn.execute("UPDATE news SET text=$1 WHERE id=1", new_text)
     await state.clear()
-    await message.answer("Новость (id=1) обновлена!")
+    await message.answer(get_message(lang, "news_updated"))
+
 
 @router.message(Command("news"))
 async def cmd_show_news(message: Message):
+    lang = await get_user_language(message.from_user.id)
     if db.db_pool is None:
-        await message.answer("db_pool == None, не инициализирован!")
-        return
+        return await message.answer(get_message(lang, "db_not_initialized"))
 
     async with db.db_pool.acquire() as conn:
         rows = await conn.fetch("SELECT id, file_ids, text FROM news ORDER BY id DESC")
 
     if not rows:
-        await message.answer("Пока нет новостей.")
-        return
+        return await message.answer(get_message(lang, "news_none"))
 
     for row in rows:
-        text_part = row["text"] or "(без текста)"
+        text_part = row["text"] or get_message(lang, "news_no_text")
+        await message.answer(
+            get_message(lang, "news_item", id=row["id"], text=text_part)
+        )
         files = json.loads(row["file_ids"] or "[]")
-        await message.answer(f"📰 ID={row['id']}: {text_part}")
         if files:
             album = []
             for i, fid in enumerate(files[:10]):
-                if i == 0:
-                    album.append(InputMediaPhoto(media=fid, caption="Фото"))
-                else:
-                    album.append(InputMediaPhoto(media=fid))
+                caption = get_message(lang, "news_photo") if i == 0 else None
+                album.append(InputMediaPhoto(media=fid, caption=caption))
             await message.answer_media_group(album)

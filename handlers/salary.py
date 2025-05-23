@@ -1,21 +1,22 @@
 # handlers/salary.py
 
 import logging
+
 from aiogram import Router, F
 from aiogram.filters.command import Command
-from aiogram.filters import StateFilter
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
+from aiogram.filters.state import StateFilter
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 import db
+from config import ADMIN_IDS
 from constants.booking_const import groups_data
 from constants.salary import salary_options
 from states.salary_states import SalaryStates
-from config import ADMIN_IDS
+from handlers.language import get_user_language, get_message
 
 logger = logging.getLogger(__name__)
 salary_router = Router()
-
 
 async def load_salary_data_from_db():
     """
@@ -46,104 +47,86 @@ async def load_salary_data_from_db():
 
     logger.info("Загружены настройки salary из БД.")
 
-
 @salary_router.message(Command("salary"))
 async def cmd_salary(message: Message, state: FSMContext):
+    lang = await get_user_language(message.from_user.id)
     if message.from_user.id not in ADMIN_IDS:
-        return await message.answer("Доступ только для администраторов.")
+        return await message.answer(get_message(lang, "admin_only"))
 
-    # Клавиатура групп по 2 в ряд
     keys = list(groups_data.keys())
-    inline_keyboard = [
-        [InlineKeyboardButton(text=k, callback_data=f"salary_group_{k}") for k in keys[i:i+2]]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=k, callback_data=f"salary_group_{k}") for k in keys[i : i+2]]
         for i in range(0, len(keys), 2)
-    ]
-    await message.answer("Выберите группу для настройки зарплаты:",
-                         reply_markup=InlineKeyboardMarkup(inline_keyboard=inline_keyboard))
+    ])
+    await message.answer(get_message(lang, "salary_choose_group"), reply_markup=kb)
     await state.set_state(SalaryStates.waiting_for_group_choice)
 
-
-@salary_router.callback_query(F.data.startswith("salary_group_"),
-                             StateFilter(SalaryStates.waiting_for_group_choice))
+@salary_router.callback_query(F.data.startswith("salary_group_"), StateFilter(SalaryStates.waiting_for_group_choice))
 async def process_group(callback: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(callback.from_user.id)
     if callback.from_user.id not in ADMIN_IDS:
-        return await callback.answer("Доступ только для администраторов!", show_alert=True)
+        return await callback.answer(get_message(lang, "admin_only"), show_alert=True)
 
     group = callback.data.removeprefix("salary_group_")
     if group not in groups_data:
-        return await callback.answer("Неизвестная группа!", show_alert=True)
+        return await callback.answer(get_message(lang, "no_such_group"), show_alert=True)
 
     await state.update_data(selected_group=group)
-
-    # Кнопки опций 1–4, отмечаем текущую галочкой
     current = groups_data[group].get("salary_option", 1)
-    inline_keyboard = [
-        [
-            InlineKeyboardButton(
-                text=f"{'✅' if opt==current else '   '} {opt}",
-                callback_data=f"salary_opt_{opt}"
-            )
-        ] for opt in (1,2,3,4)
-    ] + [[InlineKeyboardButton(text="Отмена", callback_data="salary_cancel")]]
+    buttons = [
+        InlineKeyboardButton(
+            text=f"{'✅' if opt == current else '   '} {opt}",
+            callback_data=f"salary_opt_{opt}"
+        ) for opt in (1,2,3,4)
+    ] + [[InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="salary_cancel")]]
     await callback.message.edit_text(
-        f"Группа: <b>{group}</b>\nТекущая опция: <b>{current}</b>\nВыберите новую:",
+        get_message(lang, "salary_option_prompt", group=group, current=current),
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SalaryStates.waiting_for_option_choice)
     await callback.answer()
 
-
-@salary_router.callback_query(F.data.startswith("salary_opt_"),
-                             StateFilter(SalaryStates.waiting_for_option_choice))
+@salary_router.callback_query(F.data.startswith("salary_opt_"), StateFilter(SalaryStates.waiting_for_option_choice))
 async def process_option(callback: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(callback.from_user.id)
     if callback.from_user.id not in ADMIN_IDS:
-        return await callback.answer("Доступ только для администраторов!", show_alert=True)
+        return await callback.answer(get_message(lang, "admin_only"), show_alert=True)
 
     opt = int(callback.data.removeprefix("salary_opt_"))
     data = await state.get_data()
     group = data.get("selected_group")
-
     if group not in groups_data or opt not in salary_options:
         await state.clear()
-        return await callback.answer("Некорректный выбор!", show_alert=True)
+        return await callback.answer(get_message(lang, "invalid_data"), show_alert=True)
 
-    # Обновляем в памяти
     groups_data[group]["salary_option"] = opt
-
-    # Убеждаемся, что в БД есть строка, и обновляем salary_option
-    pool = db.db_pool
-    if pool:
-        async with pool.acquire() as conn:
+    if db.db_pool:
+        async with db.db_pool.acquire() as conn:
             await conn.execute(
                 """
-                INSERT INTO group_financial_data
-                    (group_key, salary_option, salary, cash)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (group_key) DO UPDATE
-                  SET salary_option = EXCLUDED.salary_option
+                INSERT INTO group_financial_data (group_key, salary_option, salary, cash)
+                VALUES ($1,$2,$3,$4)
+                ON CONFLICT (group_key) DO UPDATE SET salary_option=EXCLUDED.salary_option
                 """,
-                group,
-                opt,
-                groups_data[group].get("salary", 0),
-                groups_data[group].get("cash", 0),
+                group, opt, groups_data[group]["salary"], groups_data[group]["cash"]
             )
 
     await state.clear()
-    await callback.message.edit_text(f"Опция зарплаты для <b>{group}</b> установлена: <b>{opt}</b>.",
-                                     parse_mode="HTML")
-    await callback.answer("Сохранено", show_alert=True)
+    await callback.message.edit_text(
+        get_message(lang, "salary_set", group=group, opt=opt),
+        parse_mode="HTML"
+    )
+    await callback.answer(get_message(lang, "done"), show_alert=True)
 
-    # Отправляем справочные значения по выбранной опции
-    text = "\n".join(f"{emoji}: {value}" for emoji, value in salary_options[opt].items())
-    await callback.message.answer(f"Платёжные коэффициенты для опции {opt}:\n{text}")
+    coeff_text = "\n".join(f"{emoji}: {value}" for emoji, value in salary_options[opt].items())
+    await callback.message.answer(get_message(lang, "salary_coeff", opt=opt, text=coeff_text))
 
-
-@salary_router.callback_query(F.data == "salary_cancel",
-                             StateFilter(SalaryStates.waiting_for_option_choice))
+@salary_router.callback_query(F.data == "salary_cancel", StateFilter(SalaryStates.waiting_for_option_choice))
 async def process_cancel(callback: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(callback.from_user.id)
     await state.clear()
-    await callback.answer("Отменено.", show_alert=True)
+    await callback.answer(get_message(lang, "cancelled"), show_alert=True)
     try:
         await callback.message.delete()
     except:
