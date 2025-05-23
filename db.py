@@ -79,6 +79,13 @@ async def create_tables():
                 emoji TEXT DEFAULT ''
             );
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id BIGINT PRIMARY KEY,
+                language TEXT NOT NULL
+            );
+
+        """)
         logging.info("Все таблицы созданы или проверены.")
 
 async def close_db_pool():

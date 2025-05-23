@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import logging, html
-
+from handlers.language import get_user_language, get_message
 import db
 from constants.booking_const import (
     BOOKING_REPORT_GROUP_ID,
@@ -169,7 +169,7 @@ async def send_financial_report(bot: Bot):
 @router.callback_query(F.data == "view_all_bookings")
 async def cmd_all(cb: CallbackQuery):
     lang = await get_user_language(cb.from_user.id)
-    from utils.text_utils import get_message
+
 
     group_times = {}
     for gk, g in groups_data.items():

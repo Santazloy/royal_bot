@@ -1,7 +1,7 @@
 # handlers/menu.py
 
 import logging
-from aiogram import Router, F, types
+from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton,
     InlineKeyboardMarkup, InputMediaPhoto
@@ -10,7 +10,6 @@ from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
-# Правильные импорты констант и стейтов
 from constants.booking_const import (
     groups_data,
     GROUP_CHOICE_IMG,
@@ -19,13 +18,13 @@ from constants.booking_const import (
     FINAL_BOOKED_IMG,
 )
 from app_states import BookUserStates
-
+from handlers.language import get_user_language, get_message
 from handlers.news import cmd_show_news
 
 menu_router = Router()
 
 # Глобальный словарь: {chat_id: message_id}, чтобы удалять старое меню
-last_menu_message = {}
+last_menu_message: dict[int, int] = {}
 
 # file_id картинки (фото) для главного меню:
 MENU_PHOTO_ID = "AgACAgQAAyEFAASJKijTAAIZ_mgjKdj-Sa3MdMHW-pSy_qLMhJOKAAJPxzEba90JUQfUH5f_fWYoAQADAgADeQADNgQ"
@@ -33,6 +32,7 @@ MENU_PHOTO_ID = "AgACAgQAAyEFAASJKijTAAIZ_mgjKdj-Sa3MdMHW-pSy_qLMhJOKAAJPxzEba90
 
 @menu_router.message(Command("menu"))
 async def cmd_menu(message: Message):
+    lang = await get_user_language(message.from_user.id)
     chat_id = message.chat.id
 
     # Удаляем предыдущее меню (если есть)
@@ -43,20 +43,37 @@ async def cmd_menu(message: Message):
         except Exception as e:
             logging.warning(f"Не удалось удалить старое меню в чате {chat_id}: {e}")
 
-    # Клавиатура: 2 колонки × 3 строки (6 кнопок)
+    # Кнопки меню
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="⏰ Бронирование", callback_data="menu_stub|booking"),
-            InlineKeyboardButton(text="💃 Девушки",  callback_data="menu_stub|girls"),
+            InlineKeyboardButton(
+                text=get_message(lang, "btn_booking"),
+                callback_data="menu_stub|booking"
+            ),
+            InlineKeyboardButton(
+                text=get_message(lang, "btn_girls"),
+                callback_data="menu_stub|girls"
+            ),
         ],
         [
-            # Здесь уже callback_data="view_all_bookings"
-            InlineKeyboardButton(text="📋 Расписание", callback_data="view_all_bookings"),
-            InlineKeyboardButton(text="🧮 Баланс",        callback_data="menu_stub|balance"),
+            InlineKeyboardButton(
+                text=get_message(lang, "btn_schedule"),
+                callback_data="view_all_bookings"
+            ),
+            InlineKeyboardButton(
+                text=get_message(lang, "btn_balance"),
+                callback_data="menu_stub|balance"
+            ),
         ],
         [
-            InlineKeyboardButton(text="📰 Новости", callback_data="menu_stub|news"),
-            InlineKeyboardButton(text="❌ Отмена бронирования", callback_data="menu_stub|cancel_booking"),
+            InlineKeyboardButton(
+                text=get_message(lang, "btn_news"),
+                callback_data="menu_stub|news"
+            ),
+            InlineKeyboardButton(
+                text=get_message(lang, "btn_cancel_booking"),
+                callback_data="menu_stub|cancel_booking"
+            ),
         ]
     ])
 
@@ -73,46 +90,34 @@ async def cmd_menu(message: Message):
 
 @menu_router.callback_query(F.data.startswith("menu_stub|"))
 async def on_menu_stub(callback: CallbackQuery, state: FSMContext):
-    """
-    Обрабатывает нажатия на кнопки, где callback_data начинается с "menu_stub|..."
-    Если action == "booking", то показываем выбор группы и т.д.
-    """
+    lang = await get_user_language(callback.from_user.id)
     parts = callback.data.split("|")
     if len(parts) != 2:
-        return await callback.answer("Некорректные данные!", show_alert=True)
+        return await callback.answer(get_message(lang, "invalid_data"), show_alert=True)
 
     action = parts[1]
 
     if action == "booking":
-        # Открываем клавиатуру выбора групп
-        row_buf = []
-        rows = []
-        i = 0
-        for gk in groups_data.keys():
-            row_buf.append(InlineKeyboardButton(text=gk, callback_data=f"bkgrp_{gk}"))
-            i += 1
+        # групповая клавиатура
+        rows, buf = [], []
+        for i, gk in enumerate(groups_data, start=1):
+            buf.append(InlineKeyboardButton(
+                text=gk, callback_data=f"bkgrp_{gk}"
+            ))
             if i % 3 == 0:
-                rows.append(row_buf)
-                row_buf = []
-        if row_buf:
-            rows.append(row_buf)
-
+                rows.append(buf); buf = []
+        if buf: rows.append(buf)
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
         try:
             await callback.message.edit_media(
-                media=InputMediaPhoto(
-                    media=GROUP_CHOICE_IMG,
-                    caption=""
-                ),
+                media=InputMediaPhoto(media=GROUP_CHOICE_IMG, caption=""),
                 reply_markup=kb
             )
-        except TelegramBadRequest as e:
-            logging.warning(f"Edit media failed: {e}")
+        except TelegramBadRequest:
             try:
                 await callback.message.delete()
-            except:
-                pass
+            except: pass
             await callback.message.answer_photo(
                 photo=GROUP_CHOICE_IMG,
                 caption="",
@@ -124,32 +129,31 @@ async def on_menu_stub(callback: CallbackQuery, state: FSMContext):
         return
 
     elif action == "girls":
-        await callback.answer("Заглушка: список Girls...", show_alert=True)
+        await callback.answer(get_message(lang, "no_action"), show_alert=True)
+
     elif action == "news":
+        header = get_message(lang, "news_header")
         try:
             await callback.message.edit_media(
-                media=InputMediaPhoto(
-                    media=MENU_PHOTO_ID,
-                    caption="Последние новости:"
-                ),
+                media=InputMediaPhoto(media=MENU_PHOTO_ID, caption=header),
                 reply_markup=None
             )
-        except TelegramBadRequest as e:
-            logging.warning(f"Edit media failed: {e}")
+        except TelegramBadRequest:
             try:
                 await callback.message.delete()
-            except:
-                pass
+            except: pass
             await callback.message.answer_photo(
                 photo=MENU_PHOTO_ID,
-                caption="Последние новости:"
+                caption=header
             )
-        # Показываем все новости
         await cmd_show_news(callback.message)
         await callback.answer()
+
     elif action == "balance":
-        await callback.answer("Заглушка: показ баланса...", show_alert=True)
+        await callback.answer(get_message(lang, "no_action"), show_alert=True)
+
     elif action == "cancel_booking":
-        await callback.answer("Заглушка: отмена бронирования...", show_alert=True)
+        await callback.answer(get_message(lang, "no_action"), show_alert=True)
+
     else:
-        await callback.answer("Неизвестная команда меню!", show_alert=True)
+        await callback.answer(get_message(lang, "menu_unknown"), show_alert=True)

@@ -6,8 +6,8 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 
 from handlers.booking.router import router
-from utils.user_utils import get_user_language
-from utils.text_utils import get_message, format_html_pre
+from handlers.language import get_user_language, get_message
+from utils.text_utils import format_html_pre
 from constants.booking_const import status_mapping, groups_data
 from constants.salary import salary_options
 from constants.booking_const import distribution_variants

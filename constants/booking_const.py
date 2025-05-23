@@ -5,7 +5,7 @@ LANG_DEFAULT = "ru"
 
 # ID специальных пользователей и групп
 SPECIAL_USER_ID           = 7935161063
-FINANCIAL_REPORT_GROUP_ID = -1002216239869
+FINANCIAL_REPORT_GROUP_ID = -1002374280400
 BOOKING_REPORT_GROUP_ID   = -1002671780634
 
 # Картинки для процесса бронирования

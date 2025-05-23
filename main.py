@@ -21,7 +21,7 @@ from handlers.booking.router import router as booking_router
 from handlers.salary import salary_router, load_salary_data_from_db
 from handlers.menu import menu_router
 from handlers.clean import router as clean_router
-
+from handlers.language import language_router
 # единый репозиторий для бронирования
 from db_access.booking_repo import BookingRepo
 
@@ -46,6 +46,7 @@ async def main():
     dp = Dispatcher()
 
     # 5) Регистрируем роутеры
+    dp.include_router(language_router)
     dp.include_router(group_id_router)
     dp.include_router(news_router)
     dp.include_router(idphoto_router)

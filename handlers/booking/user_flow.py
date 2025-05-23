@@ -13,8 +13,8 @@ from constants.booking_const import (
     TIME_CHOICE_IMG, FINAL_BOOKED_IMG,
     groups_data
 )
-from utils.user_utils import get_user_language
-from utils.text_utils import get_message, format_html_pre
+from handlers.language import get_user_language, get_message
+from utils.text_utils import format_html_pre
 from utils.time_utils import (
     generate_daily_time_slots as generate_time_slots,
     get_adjacent_time_slots,
