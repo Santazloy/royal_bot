@@ -216,6 +216,34 @@ TRANSLATIONS = {
         'zh': '已取消。',
     },
 
+    # Admin-only
+    'admin_only': {
+        'en': 'Access restricted to administrators.',
+        'ru': 'Доступ только для администраторов.',
+        'zh': '仅管理员可用。',
+    },
+    # Salary
+    'salary_choose_group': {
+        'en': 'Choose a group to configure salary:',
+        'ru': 'Выберите группу для настройки зарплаты:',
+        'zh': '请选择要配置工资的组：',
+    },
+    'salary_option_prompt': {
+        'en': 'Group: <b>{group}</b>\nCurrent option: <b>{current}</b>\nSelect a new one:',
+        'ru': 'Группа: <b>{group}</b>\nТекущая опция: <b>{current}</b>\nВыберите новую:',
+        'zh': '组：<b>{group}</b>\n当前选项：<b>{current}</b>\n请选择新的：',
+    },
+    'salary_set': {
+        'en': 'Salary option for {group} set to {opt}.',
+        'ru': 'Опция зарплаты для {group} установлена: {opt}.',
+        'zh': '已为组{group}设置工资选项：{opt}。',
+    },
+    'salary_coeff': {
+        'en': 'Payment coefficients for option {opt}:\n{text}',
+        'ru': 'Платёжные коэффициенты для опции {opt}:\n{text}',
+        'zh': '选项{opt}的支付系数：\n{text}',
+    },
+
     # News management
     'btn_add': {
         'en': 'Add',
