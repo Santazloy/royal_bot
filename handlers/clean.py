@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 import db  # теперь только модуль
 from config import is_user_admin
 from constants.booking_const import groups_data
-from handlers.booking.router import update_group_message
+from handlers.booking.reporting import update_group_message
 
 logger = logging.getLogger(__name__)
 router = Router()
