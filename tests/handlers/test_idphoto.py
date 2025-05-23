@@ -12,6 +12,7 @@ async def test_cmd_id_photo_with_photo():
     photo = AsyncMock(spec=PhotoSize)
     photo.file_id = "abc123"
     msg.photo = [photo, photo, photo]  # simulate three sizes
+    msg.answer = AsyncMock()
     await cmd_id_photo(msg)
     msg.answer.assert_awaited_with(
         "file_id вашего фото:\n<code>abc123</code>", parse_mode="HTML"
@@ -22,5 +23,6 @@ async def test_cmd_id_photo_with_photo():
 async def test_cmd_id_photo_without_photo():
     msg = AsyncMock(spec=Message)
     msg.photo = []
+    msg.answer = AsyncMock()
     await cmd_id_photo(msg)
     msg.answer.assert_awaited_with("Вы не прикрепили фото к команде /id.")
