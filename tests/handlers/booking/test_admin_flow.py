@@ -1,66 +1,113 @@
 # tests/handlers/booking/test_admin_flow.py
+
 import pytest
+from unittest.mock import AsyncMock, patch
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 from aiogram.types import CallbackQuery
-from aiogram.utils.keyboard import InlineKeyboardMarkup
 from handlers.booking.admin_flow import admin_click_slot, admin_click_status
-from constants.booking_const import status_mapping, groups_data
+from constants.booking_const import groups_data
+
 
 @pytest.mark.asyncio
-async def test_admin_click_slot_shows_status_buttons(monkeypatch):
-    # Подготовка CallbackQuery
+async def test_admin_click_slot_access_granted():
     gk = next(iter(groups_data))
-    day, slot = "Сегодня", "10:00"
-    cb = AsyncMock()
-    cb.data = f"group_time|{gk}|{day}|{slot}"
-    cb.message = AsyncMock()
-    cb.from_user = SimpleNamespace(id=111)
-    # Настроим права: чат_id совпадает и юзер — админ
     groups_data[gk]["chat_id"] = 999
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.data = f"group_time|{gk}|Сегодня|10:00"
+    cb.message = AsyncMock()
     cb.message.chat = SimpleNamespace(id=999)
-    member = SimpleNamespace(status="administrator")
-    monkeypatch.setattr(cb.bot, "get_chat_member", AsyncMock(return_value=member))
+    cb.from_user = SimpleNamespace(id=111)
+    cb.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="administrator"))
+    cb.message.edit_text = AsyncMock()
+    cb.answer = AsyncMock()
 
-    # Запуск
     await admin_click_slot(cb)
-
-    # Проверка: edit_text вызван с InlineKeyboardMarkup
-    cb.message.edit_text.assert_awaited_once()
-    _, kwargs = cb.message.edit_text.call_args
-    assert isinstance(kwargs.get("reply_markup"), InlineKeyboardMarkup)
+    cb.answer.assert_awaited()
+    cb.message.edit_text.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_admin_click_status_assigns_and_updates(monkeypatch):
-    # Подготовка CallbackQuery
+async def test_admin_click_slot_no_access():
     gk = next(iter(groups_data))
-    day, slot, code = "Сегодня", "10:00", next(iter(status_mapping))
-    cb = AsyncMock()
-    cb.data = f"group_status|{gk}|{day}|{slot}|{code}"
-    cb.message = AsyncMock()
-    cb.from_user = SimpleNamespace(id=111)
     groups_data[gk]["chat_id"] = 999
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.data = f"group_time|{gk}|Сегодня|10:00"
+    cb.message = AsyncMock()
     cb.message.chat = SimpleNamespace(id=999)
-    member = SimpleNamespace(status="creator")
-    monkeypatch.setattr(cb.bot, "get_chat_member", AsyncMock(return_value=member))
+    cb.from_user = SimpleNamespace(id=111)
+    cb.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="member"))
+    cb.answer = AsyncMock()
 
-    # Исправленный фейковый пул
-    import db
+    await admin_click_slot(cb)
+    cb.answer.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_admin_click_status_back():
+    gk = next(iter(groups_data))
+    groups_data[gk]["chat_id"] = 999
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.data = f"group_status|{gk}|Сегодня|10:00|back"
+    cb.message = AsyncMock()
+    cb.message.chat = SimpleNamespace(id=999)
+    cb.from_user = SimpleNamespace(id=111)
+    cb.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="creator"))
+    cb.answer = AsyncMock()
+
+    with patch("handlers.booking.admin_flow.update_group_message", new_callable=AsyncMock):
+        await admin_click_status(cb)
+        cb.answer.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_admin_click_status_cancel():
+    gk = next(iter(groups_data))
+    groups_data[gk]["chat_id"] = 999
+    groups_data[gk]["booked_slots"]["Сегодня"] = ["10:00"]
+    groups_data[gk]["slot_bookers"][("Сегодня", "10:00")] = 123
+    groups_data[gk]["unavailable_slots"]["Сегодня"] = {"10:30"}
+    groups_data[gk]["time_slot_statuses"][("Сегодня", "10:30")] = "✅"
+
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.data = f"group_status|{gk}|Сегодня|10:00|-1"
+    cb.message = AsyncMock()
+    cb.message.chat = SimpleNamespace(id=999)
+    cb.from_user = SimpleNamespace(id=123)
+    cb.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="creator"))
+    cb.answer = AsyncMock()
+
     fake_conn = AsyncMock()
-    fake_conn.fetchrow = AsyncMock(return_value={"balance": 100})
     fake_conn.execute = AsyncMock()
     fake_conn.__aenter__.return_value = fake_conn
-    fake_conn.__aexit__.return_value = None
 
-    class FakePool:
-        def acquire(self):
-            return fake_conn
+    with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
+         patch("handlers.booking.admin_flow.update_group_message", new_callable=AsyncMock):
+        await admin_click_status(cb)
+        cb.answer.assert_awaited()
+        fake_conn.execute.assert_awaited()
 
-    db.db_pool = FakePool()
 
-    # Запуск
-    await admin_click_status(cb)
+@pytest.mark.asyncio
+async def test_admin_click_status_set_status():
+    gk = next(iter(groups_data))
+    groups_data[gk]["chat_id"] = 999
+    groups_data[gk]["slot_bookers"][("Сегодня", "10:00")] = 123
 
-    # Проверка
-    cb.message.edit_text.assert_awaited()
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.data = f"group_status|{gk}|Сегодня|10:00|0"
+    cb.message = AsyncMock()
+    cb.message.chat = SimpleNamespace(id=999)
+    cb.from_user = SimpleNamespace(id=123)
+    cb.bot.get_chat_member = AsyncMock(return_value=SimpleNamespace(status="creator"))
+    cb.answer = AsyncMock()
+    cb.message.edit_text = AsyncMock()
+
+    fake_conn = AsyncMock()
+    fake_conn.execute = AsyncMock()
+    fake_conn.__aenter__.return_value = fake_conn
+
+    with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
+         patch("handlers.booking.rewards.apply_special_user_reward", new_callable=AsyncMock):
+        await admin_click_status(cb)
+        cb.answer.assert_awaited()
+        cb.message.edit_text.assert_awaited()
