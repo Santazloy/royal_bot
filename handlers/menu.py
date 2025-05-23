@@ -46,17 +46,17 @@ async def cmd_menu(message: Message):
     # Клавиатура: 2 колонки × 3 строки (6 кнопок)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="⏰ Booking / 预约", callback_data="menu_stub|booking"),
-            InlineKeyboardButton(text="💃 Girls / 女孩",  callback_data="menu_stub|girls"),
+            InlineKeyboardButton(text="⏰ Бронирование", callback_data="menu_stub|booking"),
+            InlineKeyboardButton(text="💃 Девушки",  callback_data="menu_stub|girls"),
         ],
         [
             # Здесь уже callback_data="view_all_bookings"
-            InlineKeyboardButton(text="📋 All Booking / 所有预约", callback_data="view_all_bookings"),
-            InlineKeyboardButton(text="🧮 Balance / 余额",        callback_data="menu_stub|balance"),
+            InlineKeyboardButton(text="📋 Расписание", callback_data="view_all_bookings"),
+            InlineKeyboardButton(text="🧮 Баланс",        callback_data="menu_stub|balance"),
         ],
         [
-            InlineKeyboardButton(text="📰 News / 新闻", callback_data="menu_stub|news"),
-            InlineKeyboardButton(text="❌ Cancel Booking / 取消预约", callback_data="menu_stub|cancel_booking"),
+            InlineKeyboardButton(text="📰 Новости", callback_data="menu_stub|news"),
+            InlineKeyboardButton(text="❌ Отмена бронирования", callback_data="menu_stub|cancel_booking"),
         ]
     ])
 

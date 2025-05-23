@@ -133,9 +133,9 @@ async def admin_click_status(cb: CallbackQuery):
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     pay_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"),
-        InlineKeyboardButton(text="Безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"),
-        InlineKeyboardButton(text="Агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent"),
+        InlineKeyboardButton(text="наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"),
+        InlineKeyboardButton(text="безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"),
+        InlineKeyboardButton(text="агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent"),
     ]])
     await cb.message.edit_text("Выберите способ оплаты:", parse_mode=ParseMode.HTML, reply_markup=pay_kb)
     await cb.answer()
