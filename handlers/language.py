@@ -215,7 +215,47 @@ TRANSLATIONS = {
         'ru': 'Отменено.',
         'zh': '已取消。',
     },
-
+    # Money command
+    'choose_what_change': {
+        'ru': 'Что вы хотите изменить?',
+        'en': 'What do you want to change?',
+        'zh': '您想要修改什么？',
+    },
+    'select_operation': {
+        'ru': 'Выберите операцию:',
+        'en': 'Select operation:',
+        'zh': '请选择操作：',
+    },
+    'enter_amount': {
+        'ru': 'Введите сумму:',
+        'en': 'Enter the amount:',
+        'zh': '请输入金额：',
+    },
+    'done': {
+        'ru': 'Операция завершена. Данные обновлены.',
+        'en': 'Operation completed. Data updated.',
+        'zh': '操作完成。数据已更新。',
+    },
+    'salary': {
+        'ru': 'Зарплата',
+        'en': 'Salary',
+        'zh': '工资',
+    },
+    'cash': {
+        'ru': 'Наличные',
+        'en': 'Cash',
+        'zh': '现金',
+    },
+    'plus': {
+        'ru': '➕',
+        'en': '➕',
+        'zh': '➕',
+    },
+    'minus': {
+        'ru': '➖',
+        'en': '➖',
+        'zh': '➖',
+    },
     # Admin-only
     'admin_only': {
         'en': 'Access restricted to administrators.',

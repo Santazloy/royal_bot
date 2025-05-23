@@ -22,6 +22,7 @@ from handlers.salary import salary_router, load_salary_data_from_db
 from handlers.menu import menu_router
 from handlers.clean import router as clean_router
 from handlers.language import language_router
+from handlers.money import money_router
 # единый репозиторий для бронирования
 from db_access.booking_repo import BookingRepo
 
@@ -55,7 +56,7 @@ async def main():
     dp.include_router(salary_router)
     dp.include_router(menu_router)
     dp.include_router(clean_router)
-
+    dp.include_router(money_router)
     # 6) Устанавливаем команды
     await bot.set_my_commands([
         BotCommand(command="/start",  description="Начать"),
@@ -66,6 +67,7 @@ async def main():
         BotCommand(command="/emoji",  description="Смена эмоджи (только для админа)"),
         BotCommand(command="/book",   description="Забронировать слот"),
         BotCommand(command="/salary", description="Настроить salary (админ)"),
+        BotCommand(command="/money", description="Изменить зарплату/наличные")
     ])
 
     # 7) Запускаем polling
