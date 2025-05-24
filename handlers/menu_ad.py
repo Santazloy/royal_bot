@@ -1,6 +1,6 @@
 import logging
 
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -11,10 +11,17 @@ from aiogram.fsm.context import FSMContext
 from config import ADMIN_IDS
 from handlers.language import get_user_language, get_message
 
+from handlers.news import cmd_added
+from handlers.salary import cmd_salary
+from handlers.group_id import show_group_id
+from handlers.startemoji import cmd_emoji
+from handlers.money import money_command
+from handlers.clean import cmd_clean
+from handlers.booking.cancelbook import cmd_off_admin
+
 logger = logging.getLogger(__name__)
 menu_ad_router = Router()
 
-# ========= Safe Answer =========
 async def safe_answer(message_or_callback, text, **kwargs):
     fallback = "Ошибка: текст не найден"
     if not text or not str(text).strip():
@@ -26,48 +33,43 @@ async def safe_answer(message_or_callback, text, **kwargs):
         return await message_or_callback.edit_text(text, **kwargs)
     raise RuntimeError("safe_answer: не могу отправить текст")
 
-# ========= Admin Menu Keyboard (полный список) =========
 def build_admin_menu_keyboard(lang):
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_salary'), callback_data='ad_salary'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_money'), callback_data='ad_money'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_users'), callback_data='ad_users'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_news'), callback_data='ad_news'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_clean'), callback_data='ad_clean'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_balances'), callback_data='ad_balances'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_conversion'), callback_data='ad_conversion'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_embedding'), callback_data='ad_embedding'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_reset_day'), callback_data='ad_reset_day'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_emoji'), callback_data='ad_emoji'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_ai_models'), callback_data='ad_ai_models'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_rules'), callback_data='ad_rules'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_photo_id'), callback_data='ad_photo_id'),
-                InlineKeyboardButton(text=get_message(lang, 'btn_group_id'), callback_data='ad_group_id'),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, 'btn_back'), callback_data='ad_back')
-            ],
-        ]
-    )
+    # Список кнопок (text, callback_data)
+    buttons = [
+        (get_message(lang, 'btn_news'), 'added'),
+        (get_message(lang, 'btn_salary'), 'salary'),
+        (get_message(lang, 'btn_group_id'), 'chat'),
+        (get_message(lang, 'btn_emoji'), 'emoji'),
+        (get_message(lang, 'btn_photo_id'), 'photo_admin'),  # <-- кнопка Фото рядом с эмодзи
+        (get_message(lang, 'btn_money'), 'money'),
+        (get_message(lang, 'btn_cancel_booking'), 'offad'),
+        (get_message(lang, 'btn_clean'), 'clean'),
+        (get_message(lang, 'btn_balances'), 'balances'),
+        (get_message(lang, 'btn_rules'), 'rules'),
+        (get_message(lang, 'btn_ai_models'), 'ai_models'),
+        (get_message(lang, 'btn_users'), 'users'),
+        (get_message(lang, 'btn_conversion'), 'conversion'),
+        (get_message(lang, 'btn_embedding'), 'embedding'),
+        (get_message(lang, 'btn_reset_day'), 'reset_day'),
+        (get_message(lang, 'btn_back'), 'back'),
+    ]
+    # Формируем по 2 в строке
+    inline_keyboard = []
+    for i in range(0, len(buttons), 2):
+        row = []
+        for b in buttons[i:i+2]:
+            row.append(InlineKeyboardButton(text=b[0], callback_data=b[1]))
+        inline_keyboard.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-# ========= Admin Menu Entry =========
 @menu_ad_router.message(Command("ad"))
 async def admin_menu_cmd(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
+    # ---- ДЕБАГ: выводим в консоль и в чат ----
+    print("DEBUG | ADMIN_IDS:", ADMIN_IDS)
+    print("DEBUG | CURRENT USER:", message.from_user.id)
+    await message.answer(f"DEBUG | ADMIN_IDS: {ADMIN_IDS}\nDEBUG | CURRENT USER: {message.from_user.id}")
+    # ---- Проверка админа ----
     if message.from_user.id not in ADMIN_IDS:
         return await safe_answer(message, get_message(lang, "admin_only"))
     kb = build_admin_menu_keyboard(lang)
@@ -78,54 +80,46 @@ async def admin_menu_cmd(message: Message, state: FSMContext):
     )
     await state.set_state("admin_menu")
 
-# ========= Admin Menu Callbacks =========
-@menu_ad_router.callback_query(F.data.startswith("ad_"), StateFilter("admin_menu"))
+@menu_ad_router.callback_query(StateFilter("admin_menu"))
 async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     if callback.from_user.id not in ADMIN_IDS:
         return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
     data = callback.data
 
-    if data == "ad_salary":
-        await safe_answer(callback, get_message(lang, "salary_choose_group"))
-    elif data == "ad_money":
-        await safe_answer(callback, get_message(lang, "choose_what_change"))
-    elif data == "ad_users":
-        await safe_answer(callback, get_message(lang, "menu_users_header", default="Управление пользователями"))
-    elif data == "ad_news":
-        await safe_answer(callback, get_message(lang, "news_header"))
-    elif data == "ad_clean":
-        await safe_answer(callback, get_message(lang, "clean_prompt"))
-    elif data == "ad_balances":
-        await safe_answer(callback, get_message(lang, "menu_balances_header", default="Балансы"))
-    elif data == "ad_conversion":
-        await safe_answer(callback, get_message(lang, "menu_conversion_header", default="Конвертация"))
-    elif data == "ad_embedding":
-        await safe_answer(callback, get_message(lang, "menu_embedding_header", default="Эмбеддинг"))
-    elif data == "ad_reset_day":
-        await safe_answer(callback, get_message(lang, "menu_reset_day_header", default="Сброс дня"))
-    elif data == "ad_emoji":
-        await safe_answer(callback, get_message(lang, "menu_emoji_header", default="Эмодзи"))
-    elif data == "ad_ai_models":
-        await safe_answer(callback, get_message(lang, "menu_ai_models_header", default="AI Модели"))
-    elif data == "ad_rules":
-        await safe_answer(callback, get_message(lang, "menu_rules_header", default="Правила"))
-    elif data == "ad_photo_id":
-        await safe_answer(callback, get_message(lang, "menu_photo_id_header", default="Фото ID"))
-    elif data == "ad_group_id":
-        await safe_answer(callback, get_message(lang, "menu_group_id_header", default="Группа ID"))
-    elif data == "ad_back":
-        await safe_answer(callback, get_message(lang, "menu_back", default="Главное меню"))
+    if data == "added":
+        await cmd_added(callback.message, state)
+    elif data == "salary":
+        await cmd_salary(callback.message, state)
+    elif data == "chat":
+        await show_group_id(callback.message)
+    elif data == "emoji":
+        await cmd_emoji(callback.message)
+    elif data == "photo_admin":
+        await safe_answer(callback, "Панель работы с фото для админа (реализуй свою логику)")
+    elif data == "money":
+        await money_command(callback.message, state)
+    elif data == "offad":
+        await cmd_off_admin(callback.message)
+    elif data == "clean":
+        await cmd_clean(callback.message, state)
+    elif data == "balances":
+        await safe_answer(callback, get_message(lang, "menu_balances_header", default="Балансы (ещё не реализовано)"))
+    elif data == "rules":
+        await safe_answer(callback, get_message(lang, "menu_rules_header", default="Правила (ещё не реализовано)"))
+    elif data == "ai_models":
+        await safe_answer(callback, get_message(lang, "menu_ai_models_header", default="AI Модели (ещё не реализовано)"))
+    elif data == "users":
+        await safe_answer(callback, get_message(lang, "menu_users_header", default="Пользователи (ещё не реализовано)"))
+    elif data == "conversion":
+        await safe_answer(callback, get_message(lang, "menu_conversion_header", default="Конвертация (ещё не реализовано)"))
+    elif data == "embedding":
+        await safe_answer(callback, get_message(lang, "menu_embedding_header", default="Эмбеддинг (ещё не реализовано)"))
+    elif data == "reset_day":
+        await safe_answer(callback, get_message(lang, "menu_reset_day_header", default="Сброс дня (ещё не реализовано)"))
+    elif data == "back":
+        await safe_answer(callback, "Выход из админ-меню.")
         await state.clear()
     else:
-        await safe_answer(callback, get_message(lang, "menu_unknown"))
+        await safe_answer(callback, "Неизвестная команда.")
     await callback.answer()
-
-# ========= Добавь эти ключи в TRANSLATIONS, если хочешь красивые заголовки =========
-# 'menu_admin_header', 'menu_users_header', 'menu_balances_header', 'menu_conversion_header',
-# 'menu_embedding_header', 'menu_reset_day_header', 'menu_emoji_header', 'menu_ai_models_header',
-# 'menu_rules_header', 'menu_photo_id_header', 'menu_group_id_header', 'menu_back'
-
-# ========= Router Setup =========
-def setup_menu_ad_router(dp):
-    dp.include_router(menu_ad_router)
