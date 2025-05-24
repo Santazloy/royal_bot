@@ -1,3 +1,4 @@
+# handlers/news.py
 import json
 import asyncio
 import logging
@@ -179,3 +180,8 @@ async def cmd_show_news(message: Message):
                 caption = get_message(lang, "news_photo") if i == 0 else None
                 album.append(InputMediaPhoto(media=fid, caption=caption))
             await message.answer_media_group(album)
+
+async def cmd_added(callback: CallbackQuery, state: FSMContext):
+    if not is_user_admin(callback.from_user.id):
+        return await callback.answer("Нет прав", show_alert=True)
+    await callback.message.answer("Здесь будут новости.")

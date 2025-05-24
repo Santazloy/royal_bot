@@ -42,10 +42,11 @@ async def main():
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
     dp.include_router(salary_router)
-    dp.include_router(menu_ad_router)   # Только так!
-    dp.include_router(menu_router)
     dp.include_router(clean_router)
     dp.include_router(money_router)
+    dp.include_router(menu_ad_router)   # Только так!
+    dp.include_router(menu_router)
+
     await bot.set_my_commands([
         BotCommand(command="/start",  description="Начать"),
         BotCommand(command="/help",   description="Помощь"),
