@@ -1,18 +1,16 @@
 # handlers/booking/cancelbook.py
 
-from aiogram import Router, F
+from handlers.booking.router import router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
-
+from aiogram import F
 from constants.booking_const import groups_data
 from handlers.language import get_user_language, get_message
 from handlers.booking.reporting import update_group_message
 from utils.time_utils import get_adjacent_time_slots
 import db
-
-router = Router()
 
 @router.message(Command("off"))
 async def cmd_off(message: Message):
