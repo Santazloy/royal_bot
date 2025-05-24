@@ -385,6 +385,36 @@ TRANSLATIONS = {
         'ru': 'Фото',
         'zh': '照片',
     },
+    "off_choose_booking": {
+        "ru": "Выберите бронирование для отмены",
+        "en": "Choose a booking to cancel",
+        "zh": "选择要取消的预订"
+    },
+    "booking_cancelled": {
+        "ru": "Бронирование отменено.",
+        "en": "Booking cancelled.",
+        "zh": "预订已取消。"
+    },
+    "booking_cancelled_by_admin": {
+        "ru": "Бронирование отменено администратором.",
+        "en": "Booking cancelled by admin.",
+        "zh": "管理员已取消预订。"
+    },
+    "no_such_booking": {
+        "ru": "Такого бронирования не найдено.",
+        "en": "Booking not found.",
+        "zh": "未找到该预订。"
+    },
+    "no_active_bookings": {
+        "ru": "Нет активных бронирований.",
+        "en": "No active bookings.",
+        "zh": "没有有效的预订。"
+    },
+    "db_not_initialized": {
+        "ru": "База данных не инициализирована.",
+        "en": "Database not initialized.",
+        "zh": "数据库未初始化。"
+    },
 }
 
 async def get_user_language(user_id: int) -> str:

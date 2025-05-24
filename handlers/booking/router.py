@@ -13,4 +13,4 @@ repo = BookingRepo(db.db_pool)
 data_mgr = BookingDataManager(groups_data)
 
 # Импортируем модули-обработчики — их декораторы привяжутся к этому же `router`
-from handlers.booking import user_flow, admin_flow, payment_flow, reporting, rewards
+from handlers.booking import user_flow, admin_flow, payment_flow, reporting, rewards, cancelbook

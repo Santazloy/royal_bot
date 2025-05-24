@@ -67,7 +67,9 @@ async def main():
         BotCommand(command="/emoji",  description="Смена эмоджи (только для админа)"),
         BotCommand(command="/book",   description="Забронировать слот"),
         BotCommand(command="/salary", description="Настроить salary (админ)"),
-        BotCommand(command="/money", description="Изменить зарплату/наличные")
+        BotCommand(command="/money", description="Изменить зарплату/наличные"),
+        BotCommand(command="/off", description="Отменить свою бронь"),
+        BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
     ])
 
     # 7) Запускаем polling
