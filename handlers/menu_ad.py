@@ -8,9 +8,9 @@ from aiogram.filters.command import Command
 from aiogram.filters.state import StateFilter
 from aiogram.fsm.context import FSMContext
 
-from config import ADMIN_IDS
+from config import is_user_admin
 from handlers.language import get_user_language, get_message
-
+from states.admin_states import AdminStates
 from handlers.news import cmd_added
 from handlers.salary import cmd_salary
 from handlers.group_id import show_group_id
@@ -34,13 +34,12 @@ async def safe_answer(message_or_callback, text, **kwargs):
     raise RuntimeError("safe_answer: не могу отправить текст")
 
 def build_admin_menu_keyboard(lang):
-    # Список кнопок (text, callback_data)
     buttons = [
         (get_message(lang, 'btn_news'), 'added'),
         (get_message(lang, 'btn_salary'), 'salary'),
         (get_message(lang, 'btn_group_id'), 'chat'),
         (get_message(lang, 'btn_emoji'), 'emoji'),
-        (get_message(lang, 'btn_photo_id'), 'photo_admin'),  # <-- кнопка Фото рядом с эмодзи
+        (get_message(lang, 'btn_photo_id'), 'photo_admin'),
         (get_message(lang, 'btn_money'), 'money'),
         (get_message(lang, 'btn_cancel_booking'), 'offad'),
         (get_message(lang, 'btn_clean'), 'clean'),
@@ -53,24 +52,16 @@ def build_admin_menu_keyboard(lang):
         (get_message(lang, 'btn_reset_day'), 'reset_day'),
         (get_message(lang, 'btn_back'), 'back'),
     ]
-    # Формируем по 2 в строке
     inline_keyboard = []
     for i in range(0, len(buttons), 2):
-        row = []
-        for b in buttons[i:i+2]:
-            row.append(InlineKeyboardButton(text=b[0], callback_data=b[1]))
+        row = [InlineKeyboardButton(text=btn[0], callback_data=btn[1]) for btn in buttons[i:i+2]]
         inline_keyboard.append(row)
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 @menu_ad_router.message(Command("ad"))
 async def admin_menu_cmd(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
-    # ---- ДЕБАГ: выводим в консоль и в чат ----
-    print("DEBUG | ADMIN_IDS:", ADMIN_IDS)
-    print("DEBUG | CURRENT USER:", message.from_user.id)
-    await message.answer(f"DEBUG | ADMIN_IDS: {ADMIN_IDS}\nDEBUG | CURRENT USER: {message.from_user.id}")
-    # ---- Проверка админа ----
-    if message.from_user.id not in ADMIN_IDS:
+    if not is_user_admin(message.from_user.id):
         return await safe_answer(message, get_message(lang, "admin_only"))
     kb = build_admin_menu_keyboard(lang)
     await safe_answer(
@@ -78,12 +69,12 @@ async def admin_menu_cmd(message: Message, state: FSMContext):
         get_message(lang, "menu_admin_header", default="Меню администратора:"),
         reply_markup=kb
     )
-    await state.set_state("admin_menu")
+    await state.set_state(AdminStates.menu)
 
-@menu_ad_router.callback_query(StateFilter("admin_menu"))
+@menu_ad_router.callback_query(StateFilter(AdminStates.menu))
 async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
-    if callback.from_user.id not in ADMIN_IDS:
+    if not is_user_admin(callback.from_user.id):
         return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
     data = callback.data
 
@@ -94,7 +85,7 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     elif data == "chat":
         await show_group_id(callback.message)
     elif data == "emoji":
-        await cmd_emoji(callback.message)
+        await cmd_emoji(callback.message, callback.bot)
     elif data == "photo_admin":
         await safe_answer(callback, "Панель работы с фото для админа (реализуй свою логику)")
     elif data == "money":

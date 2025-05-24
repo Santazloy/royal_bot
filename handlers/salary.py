@@ -1,5 +1,3 @@
-# handlers/salary.py
-
 import logging
 
 from aiogram import Router, F
@@ -14,7 +12,7 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 
 import db
-from config import ADMIN_IDS
+from config import is_user_admin
 from constants.booking_const import groups_data
 from constants.salary import salary_options
 from states.salary_states import SalaryStates
@@ -23,22 +21,16 @@ from handlers.language import get_user_language, get_message
 logger = logging.getLogger(__name__)
 salary_router = Router()
 
-# ========== NEW: Safe message sending ==========
-
 async def safe_answer(message_or_callback, text, **kwargs):
-    """Безопасная отправка сообщений. Если text пустой — отправляет fallback и логирует ошибку."""
     fallback = "Ошибка: текст не найден"
     if not text or not text.strip():
         logger.error(f"[safe_answer] Пустой текст сообщения для {repr(message_or_callback)}. kwargs={kwargs}")
         text = fallback
     if hasattr(message_or_callback, 'answer'):
         return await message_or_callback.answer(text, **kwargs)
-    # Для edit_text
     if hasattr(message_or_callback, 'edit_text'):
         return await message_or_callback.edit_text(text, **kwargs)
     raise RuntimeError("safe_answer: unknown message/callback object")
-
-# ===============================================
 
 async def load_salary_data_from_db():
     pool = db.db_pool
@@ -69,13 +61,8 @@ async def load_salary_data_from_db():
 @salary_router.message(Command("salary"))
 async def cmd_salary(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
-    if message.from_user.id not in ADMIN_IDS:
-        # === CHANGE HERE ===
-        return await safe_answer(
-            message,
-            get_message(lang, "admin_only")
-        )
-    # build buttons: two groups per row
+    if not is_user_admin(message.from_user.id):
+        return await safe_answer(message, get_message(lang, "admin_only"))
     keys = list(groups_data.keys())
     keyboard = [
         [
@@ -86,7 +73,6 @@ async def cmd_salary(message: Message, state: FSMContext):
         ] for i in range(0, len(keys), 2)
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    # === CHANGE HERE ===
     await safe_answer(
         message,
         get_message(lang, "salary_choose_group"),
@@ -100,24 +86,13 @@ async def cmd_salary(message: Message, state: FSMContext):
 )
 async def process_group(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
-    if callback.from_user.id not in ADMIN_IDS:
-        # === CHANGE HERE ===
-        return await safe_answer(
-            callback,
-            get_message(lang, "admin_only"),
-            show_alert=True
-        )
+    if not is_user_admin(callback.from_user.id):
+        return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
     group = callback.data.removeprefix("salary_group_")
     if group not in groups_data:
-        # === CHANGE HERE ===
-        return await safe_answer(
-            callback,
-            get_message(lang, "no_such_group"),
-            show_alert=True
-        )
+        return await safe_answer(callback, get_message(lang, "no_such_group"), show_alert=True)
     await state.update_data(selected_group=group)
     current = groups_data[group].get("salary_option", 1)
-    # options 1–4, mark current with a check
     buttons = [
         [
             InlineKeyboardButton(
@@ -126,19 +101,12 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
             )
         ] for opt in (1, 2, 3, 4)
     ]
-    # add cancel
     buttons.append(
         [InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="salary_cancel")]
     )
-    # === CHANGE HERE ===
     await safe_answer(
         callback.message,
-        get_message(
-            lang,
-            "salary_option_prompt",
-            group=group,
-            current=current
-        ),
+        get_message(lang, "salary_option_prompt", group=group, current=current),
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
@@ -151,25 +119,14 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
 )
 async def process_option(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
-    if callback.from_user.id not in ADMIN_IDS:
-        # === CHANGE HERE ===
-        return await safe_answer(
-            callback,
-            get_message(lang, "admin_only"),
-            show_alert=True
-        )
+    if not is_user_admin(callback.from_user.id):
+        return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
     opt = int(callback.data.removeprefix("salary_opt_"))
     data = await state.get_data()
     group = data.get("selected_group")
     if group not in groups_data or opt not in salary_options:
         await state.clear()
-        # === CHANGE HERE ===
-        return await safe_answer(
-            callback,
-            get_message(lang, "invalid_data"),
-            show_alert=True
-        )
-    # update in memory and in DB
+        return await safe_answer(callback, get_message(lang, "invalid_data"), show_alert=True)
     groups_data[group]["salary_option"] = opt
     if db.db_pool:
         async with db.db_pool.acquire() as conn:
@@ -187,20 +144,15 @@ async def process_option(callback: CallbackQuery, state: FSMContext):
                 groups_data[group]["cash"],
             )
     await state.clear()
-    # confirm
-    # === CHANGE HERE ===
     await safe_answer(
         callback.message,
         get_message(lang, "salary_set", group=group, opt=opt),
         parse_mode="HTML"
     )
     await callback.answer(get_message(lang, "done"), show_alert=True)
-    # send coefficients
     coeff_text = "\n".join(
-        f"{emoji}: {value}"
-        for emoji, value in salary_options[opt].items()
+        f"{emoji}: {value}" for emoji, value in salary_options[opt].items()
     )
-    # === CHANGE HERE ===
     await safe_answer(
         callback.message,
         get_message(lang, "salary_coeff", opt=opt, text=coeff_text)

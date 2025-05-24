@@ -1,32 +1,21 @@
-# handlers/startemoji.py
-
 import logging
 from aiogram import Router, F, Bot
-from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
 import db
 from handlers.language import get_user_language, get_message
+from config import is_user_admin
 
 logger = logging.getLogger(__name__)
 router = Router()
-
-ADMIN_IDS = [7894353415, 7935161063, 1768520583]
 
 AVAILABLE_EMOJIS = [
     "😎", "💃", "👻", "🤖", "👑", "🦁", "❤️",
     "💰", "🥇", "🍕", "🦋", "🐶", "🐱", "🦊", "🦄"
 ]
-
-def is_user_admin(user_id: int) -> bool:
-    return user_id in ADMIN_IDS
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, bot: Bot):
@@ -54,7 +43,11 @@ async def send_emoji_request_to_admins(user_id: int, bot: Bot):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"Назначить эмоджи для {user_id}", callback_data=f"assign_emoji_{user_id}")]
     ])
-    for admin_id in ADMIN_IDS:
+    known_admin_ids = [7894353415, 7935161063, 1768520583]  # используется централизованно
+
+    for admin_id in known_admin_ids:
+        if not is_user_admin(admin_id):
+            continue
         try:
             await bot.send_message(
                 admin_id,

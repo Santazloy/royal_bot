@@ -18,9 +18,7 @@ from handlers.language import get_user_language, get_message
 
 logger = logging.getLogger(__name__)
 
-def is_user_admin(user_id: int) -> bool:
-    return user_id in [7894353415, 7935161063, 1768520583]
-
+from config import is_user_admin
 class NewsStates(StatesGroup):
     waiting_for_photos = State()
     waiting_for_text = State()

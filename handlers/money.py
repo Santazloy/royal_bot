@@ -1,5 +1,3 @@
-# handlers/money.py
-
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters.command import Command
@@ -13,6 +11,7 @@ from constants.booking_const import groups_data
 from handlers.booking.reporting import update_group_message, send_financial_report
 from handlers.language import get_user_language, get_message
 from utils.text_utils import format_html_pre
+from config import is_user_admin
 
 money_router = Router()
 
@@ -23,6 +22,8 @@ class MoneyStates(StatesGroup):
 
 @money_router.message(Command("money"))
 async def money_command(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        return await message.answer("Только админ может менять баланс.")
     user_id = message.from_user.id
     user_lang = await get_user_language(user_id)
     chat_id = message.chat.id
@@ -60,6 +61,8 @@ async def money_command(message: Message, state: FSMContext):
     StateFilter(MoneyStates.waiting_for_selection)
 )
 async def money_select_type(cb: CallbackQuery, state: FSMContext):
+    if not is_user_admin(cb.from_user.id):
+        return await cb.answer("Недостаточно прав.", show_alert=True)
     user_lang = await get_user_language(cb.from_user.id)
     typ = cb.data.split("money_")[1]
 
@@ -85,6 +88,8 @@ async def money_select_type(cb: CallbackQuery, state: FSMContext):
     StateFilter(MoneyStates.waiting_for_plus_minus)
 )
 async def money_operation(cb: CallbackQuery, state: FSMContext):
+    if not is_user_admin(cb.from_user.id):
+        return await cb.answer("Недостаточно прав.", show_alert=True)
     user_lang = await get_user_language(cb.from_user.id)
     op = cb.data.split("money_")[1]
 
@@ -99,6 +104,8 @@ async def money_operation(cb: CallbackQuery, state: FSMContext):
 
 @money_router.message(F.text, StateFilter(MoneyStates.waiting_for_amount))
 async def process_amount_input(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        return await message.answer("Недостаточно прав для изменения суммы.")
     user_lang = await get_user_language(message.from_user.id)
     data = await state.get_data()
     money_type = data['money_type']
