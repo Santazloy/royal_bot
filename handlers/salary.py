@@ -23,7 +23,7 @@ salary_router = Router()
 
 async def safe_answer(message_or_callback, text, **kwargs):
     fallback = "Ошибка: текст не найден"
-    if not text or not text.strip():
+    if not text or not str(text).strip():
         logger.error(f"[safe_answer] Пустой текст сообщения для {repr(message_or_callback)}. kwargs={kwargs}")
         text = fallback
     if hasattr(message_or_callback, 'answer'):
