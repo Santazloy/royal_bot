@@ -7,10 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 
 from config import TELEGRAM_BOT_TOKEN
-import db  # init пулa и создание таблиц
-
-# загрузчики состояния зарплат
-
+import db
 
 # роутеры
 from handlers.group_id import router as group_id_router
@@ -23,30 +20,21 @@ from handlers.menu import menu_router
 from handlers.clean import router as clean_router
 from handlers.language import language_router
 from handlers.money import money_router
-# единый репозиторий для бронирования
+from handlers.menu_ad import menu_ad_router  # ВАЖНО! Только импорт!
+
 from db_access.booking_repo import BookingRepo
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-
-    # 1) Инициализируем пул и создаём таблицы
     await db.init_db_pool()
     await db.create_tables()
-
-    # 2) Загружаем все брони/статусы в память
     repo = BookingRepo(db.db_pool)
     await repo.load_data()
     logging.info("Слоты и статусы загружены из БД.")
-
-    # 3) Загружаем настройки salary
     await load_salary_data_from_db()
     logging.info("Настройки salary загружены из БД.")
-
-    # 4) Настраиваем бота
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
-
-    # 5) Регистрируем роутеры
     dp.include_router(language_router)
     dp.include_router(group_id_router)
     dp.include_router(news_router)
@@ -54,10 +42,10 @@ async def main():
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
     dp.include_router(salary_router)
+    dp.include_router(menu_ad_router)   # Только так!
     dp.include_router(menu_router)
     dp.include_router(clean_router)
     dp.include_router(money_router)
-    # 6) Устанавливаем команды
     await bot.set_my_commands([
         BotCommand(command="/start",  description="Начать"),
         BotCommand(command="/help",   description="Помощь"),
@@ -70,9 +58,8 @@ async def main():
         BotCommand(command="/money", description="Изменить зарплату/наличные"),
         BotCommand(command="/off", description="Отменить свою бронь"),
         BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
+        BotCommand(command="/ad", description="Открыть админ-меню"),
     ])
-
-    # 7) Запускаем polling
     try:
         await dp.start_polling(bot)
     finally:

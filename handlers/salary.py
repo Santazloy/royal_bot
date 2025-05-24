@@ -23,11 +23,24 @@ from handlers.language import get_user_language, get_message
 logger = logging.getLogger(__name__)
 salary_router = Router()
 
+# ========== NEW: Safe message sending ==========
+
+async def safe_answer(message_or_callback, text, **kwargs):
+    """Безопасная отправка сообщений. Если text пустой — отправляет fallback и логирует ошибку."""
+    fallback = "Ошибка: текст не найден"
+    if not text or not text.strip():
+        logger.error(f"[safe_answer] Пустой текст сообщения для {repr(message_or_callback)}. kwargs={kwargs}")
+        text = fallback
+    if hasattr(message_or_callback, 'answer'):
+        return await message_or_callback.answer(text, **kwargs)
+    # Для edit_text
+    if hasattr(message_or_callback, 'edit_text'):
+        return await message_or_callback.edit_text(text, **kwargs)
+    raise RuntimeError("safe_answer: unknown message/callback object")
+
+# ===============================================
 
 async def load_salary_data_from_db():
-    """
-    Load salary_option, salary, cash and message_id from DB into groups_data
-    """
     pool = db.db_pool
     if not pool:
         logger.error("db_pool is None in load_salary_data_from_db()")
@@ -53,15 +66,15 @@ async def load_salary_data_from_db():
 
     logger.info("Salary settings loaded from DB.")
 
-
 @salary_router.message(Command("salary"))
 async def cmd_salary(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
     if message.from_user.id not in ADMIN_IDS:
-        return await message.answer(
+        # === CHANGE HERE ===
+        return await safe_answer(
+            message,
             get_message(lang, "admin_only")
         )
-
     # build buttons: two groups per row
     keys = list(groups_data.keys())
     keyboard = [
@@ -73,13 +86,13 @@ async def cmd_salary(message: Message, state: FSMContext):
         ] for i in range(0, len(keys), 2)
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-    await message.answer(
+    # === CHANGE HERE ===
+    await safe_answer(
+        message,
         get_message(lang, "salary_choose_group"),
         reply_markup=kb
     )
     await state.set_state(SalaryStates.waiting_for_group_choice)
-
 
 @salary_router.callback_query(
     F.data.startswith("salary_group_"),
@@ -88,21 +101,22 @@ async def cmd_salary(message: Message, state: FSMContext):
 async def process_group(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     if callback.from_user.id not in ADMIN_IDS:
-        return await callback.answer(
+        # === CHANGE HERE ===
+        return await safe_answer(
+            callback,
             get_message(lang, "admin_only"),
             show_alert=True
         )
-
     group = callback.data.removeprefix("salary_group_")
     if group not in groups_data:
-        return await callback.answer(
+        # === CHANGE HERE ===
+        return await safe_answer(
+            callback,
             get_message(lang, "no_such_group"),
             show_alert=True
         )
-
     await state.update_data(selected_group=group)
     current = groups_data[group].get("salary_option", 1)
-
     # options 1–4, mark current with a check
     buttons = [
         [
@@ -116,8 +130,9 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
     buttons.append(
         [InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="salary_cancel")]
     )
-
-    await callback.message.edit_text(
+    # === CHANGE HERE ===
+    await safe_answer(
+        callback.message,
         get_message(
             lang,
             "salary_option_prompt",
@@ -130,7 +145,6 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SalaryStates.waiting_for_option_choice)
     await callback.answer()
 
-
 @salary_router.callback_query(
     F.data.startswith("salary_opt_"),
     StateFilter(SalaryStates.waiting_for_option_choice),
@@ -138,22 +152,23 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
 async def process_option(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     if callback.from_user.id not in ADMIN_IDS:
-        return await callback.answer(
+        # === CHANGE HERE ===
+        return await safe_answer(
+            callback,
             get_message(lang, "admin_only"),
             show_alert=True
         )
-
     opt = int(callback.data.removeprefix("salary_opt_"))
     data = await state.get_data()
     group = data.get("selected_group")
-
     if group not in groups_data or opt not in salary_options:
         await state.clear()
-        return await callback.answer(
+        # === CHANGE HERE ===
+        return await safe_answer(
+            callback,
             get_message(lang, "invalid_data"),
             show_alert=True
         )
-
     # update in memory and in DB
     groups_data[group]["salary_option"] = opt
     if db.db_pool:
@@ -171,24 +186,25 @@ async def process_option(callback: CallbackQuery, state: FSMContext):
                 groups_data[group]["salary"],
                 groups_data[group]["cash"],
             )
-
     await state.clear()
     # confirm
-    await callback.message.edit_text(
+    # === CHANGE HERE ===
+    await safe_answer(
+        callback.message,
         get_message(lang, "salary_set", group=group, opt=opt),
         parse_mode="HTML"
     )
     await callback.answer(get_message(lang, "done"), show_alert=True)
-
     # send coefficients
     coeff_text = "\n".join(
         f"{emoji}: {value}"
         for emoji, value in salary_options[opt].items()
     )
-    await callback.message.answer(
+    # === CHANGE HERE ===
+    await safe_answer(
+        callback.message,
         get_message(lang, "salary_coeff", opt=opt, text=coeff_text)
     )
-
 
 @salary_router.callback_query(
     F.data == "salary_cancel",
