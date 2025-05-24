@@ -1,3 +1,5 @@
+# handlers/language.py
+
 from aiogram import Router, F
 from aiogram.filters.command import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -29,11 +31,6 @@ TRANSLATIONS = {
         'en': 'No such group!',
         'ru': 'Нет такой группы!',
         'zh': '未找到此组！',
-    },
-    'no_such_booking': {
-        'en': 'No such booking found.',
-        'ru': 'Не найдена такая бронь!',
-        'zh': '未找到该预订。',
     },
     'no_permission': {
         'en': 'You do not have permission to perform this action.',
@@ -93,6 +90,23 @@ TRANSLATIONS = {
         'zh': '没有预订。',
     },
 
+    # Cancellation (/off и /offad)
+    'off_choose_booking': {
+        'en': 'Choose a booking to cancel',
+        'ru': 'Выберите бронирование для отмены',
+        'zh': '选择要取消的预订',
+    },
+    'booking_cancelled': {
+        'en': 'Booking cancelled.',
+        'ru': 'Бронирование отменено.',
+        'zh': '预订已取消。',
+    },
+    'booking_cancelled_by_admin': {
+        'en': 'Booking cancelled by admin.',
+        'ru': 'Бронирование отменено администратором.',
+        'zh': '管理员已取消预订。',
+    },
+
     # Payment flow
     'select_method_payment': {
         'en': 'Select payment method:',
@@ -134,10 +148,10 @@ TRANSLATIONS = {
     'btn_back':           {'en': '« Back',          'ru': '« Назад',       'zh': '« 返回'},
     'btn_cancel':         {'en': '❌❌❌ Cancel',     'ru': '❌❌❌ Отменить', 'zh': '❌❌❌ 取消'},
     'btn_booking':        {'en': '⏰ Booking',       'ru': '⏰ Бронирование','zh': '⏰ 预订'},
-    'btn_girls':          {'en': '💃 Girls',         'ru': '💃 Девушки',     'zh': '💃 女士'},
-    'btn_schedule':       {'en': '📋 Schedule',      'ru': '📋 Расписание',  'zh': '📋 日程'},
-    'btn_balance':        {'en': '🧮 Balance',       'ru': '🧮 Баланс',      'zh': '🧮 余额'},
-    'btn_news':           {'en': '📰 News',          'ru': '📰 Новости',    'zh': '📰 新闻'},
+    'btn_girls':          {'en': '💃 Girls',        'ru': '💃 Девушки',     'zh': '💃 女士'},
+    'btn_schedule':       {'en': '📋 Schedule',     'ru': '📋 Расписание',  'zh': '📋 日程'},
+    'btn_balance':        {'en': '🧮 Balance',      'ru': '🧮 Баланс',      'zh': '🧮 余额'},
+    'btn_news':           {'en': '📰 News',         'ru': '📰 Новости',    'zh': '📰 新闻'},
     'btn_cancel_booking': {'en': '❌ Cancel booking','ru': '❌ Отмена брони', 'zh': '❌ 取消预订'},
 
     # Menu headers/errors
@@ -146,34 +160,22 @@ TRANSLATIONS = {
 
     # Cleanup (/clean)
     'clean_time': {
-        'en': 'Time',
-        'ru': 'Время',
-        'zh': '时间',
+        'en': 'Time', 'ru': 'Время', 'zh': '时间',
     },
     'clean_salary': {
-        'en': 'Salary',
-        'ru': 'Зарплата',
-        'zh': '工资',
+        'en': 'Salary', 'ru': 'Зарплата', 'zh': '工资',
     },
     'clean_cash': {
-        'en': 'Cash',
-        'ru': 'Наличные',
-        'zh': '现金',
+        'en': 'Cash', 'ru': 'Наличные', 'zh': '现金',
     },
     'clean_all': {
-        'en': 'Clear all data',
-        'ru': 'Стереть все данные',
-        'zh': '清除所有数据',
+        'en': 'Clear all data', 'ru': 'Стереть все данные', 'zh': '清除所有数据',
     },
     'clean_prompt': {
-        'en': 'What would you like to clear?',
-        'ru': 'Что вы хотите стереть?',
-        'zh': '您想清除什么？',
+        'en': 'What would you like to clear?', 'ru': 'Что вы хотите стереть?', 'zh': '您想清除什么？',
     },
     'clean_confirm_all': {
-        'en': 'Yes, clear all',
-        'ru': 'Да, стереть все данные',
-        'zh': '是的，全部清除',
+        'en': 'Yes, clear all', 'ru': 'Да, стереть все данные', 'zh': '是的，全部清除',
     },
     'clean_confirm_all_prompt': {
         'en': 'Confirm clearing ALL data (time/salary/cash) for ALL groups?',
@@ -191,9 +193,7 @@ TRANSLATIONS = {
         'zh': '确认清除所有群组的{section}？',
     },
     'clean_confirm_group': {
-        'en': 'Yes, clear',
-        'ru': 'Да, стереть!',
-        'zh': '是的，清除！',
+        'en': 'Yes, clear', 'ru': 'Да, стереть!', 'zh': '是的，清除！',
     },
     'clean_group_prompt': {
         'en': 'Confirm clearing {section} for group {group}',
@@ -211,62 +211,38 @@ TRANSLATIONS = {
         'zh': '已为群组{group}清除{section}。',
     },
     'cancelled': {
-        'en': 'Cancelled.',
-        'ru': 'Отменено.',
-        'zh': '已取消。',
+        'en': 'Cancelled.', 'ru': 'Отменено.', 'zh': '已取消。',
     },
+
     # Money command
     'choose_what_change': {
-        'ru': 'Что вы хотите изменить?',
-        'en': 'What do you want to change?',
-        'zh': '您想要修改什么？',
+        'en': 'What do you want to change?', 'ru': 'Что вы хотите изменить?', 'zh': '您想要修改什么？',
     },
     'select_operation': {
-        'ru': 'Выберите операцию:',
-        'en': 'Select operation:',
-        'zh': '请选择操作：',
+        'en': 'Select operation:', 'ru': 'Выберите операцию:', 'zh': '请选择操作：',
     },
     'enter_amount': {
-        'ru': 'Введите сумму:',
-        'en': 'Enter the amount:',
-        'zh': '请输入金额：',
+        'en': 'Enter the amount:', 'ru': 'Введите сумму:', 'zh': '请输入金额：',
     },
     'done': {
-        'ru': 'Операция завершена. Данные обновлены.',
-        'en': 'Operation completed. Data updated.',
-        'zh': '操作完成。数据已更新。',
+        'en': 'Operation completed. Data updated.', 'ru': 'Операция завершена. Данные обновлены.', 'zh': '操作完成。数据已更新。',
     },
     'salary': {
-        'ru': 'Зарплата',
-        'en': 'Salary',
-        'zh': '工资',
+        'en': 'Salary', 'ru': 'Зарплата', 'zh': '工资',
     },
     'cash': {
-        'ru': 'Наличные',
-        'en': 'Cash',
-        'zh': '现金',
+        'en': 'Cash', 'ru': 'Наличные', 'zh': '现金',
     },
     'plus': {
-        'ru': '➕',
-        'en': '➕',
-        'zh': '➕',
+        'en': '➕', 'ru': '➕', 'zh': '➕',
     },
     'minus': {
-        'ru': '➖',
-        'en': '➖',
-        'zh': '➖',
+        'en': '➖', 'ru': '➖', 'zh': '➖',
     },
-    # Admin-only
-    'admin_only': {
-        'en': 'Access restricted to administrators.',
-        'ru': 'Доступ только для администраторов.',
-        'zh': '仅管理员可用。',
-    },
-    # Salary
+
+    # Salary admin
     'salary_choose_group': {
-        'en': 'Choose a group to configure salary:',
-        'ru': 'Выберите группу для настройки зарплаты:',
-        'zh': '请选择要配置工资的组：',
+        'en': 'Choose a group to configure salary:', 'ru': 'Выберите группу для настройки зарплаты:', 'zh': '请选择要配置工资的组：',
     },
     'salary_option_prompt': {
         'en': 'Group: <b>{group}</b>\nCurrent option: <b>{current}</b>\nSelect a new one:',
@@ -274,57 +250,24 @@ TRANSLATIONS = {
         'zh': '组：<b>{group}</b>\n当前选项：<b>{current}</b>\n请选择新的：',
     },
     'salary_set': {
-        'en': 'Salary option for {group} set to {opt}.',
-        'ru': 'Опция зарплаты для {group} установлена: {opt}.',
-        'zh': '已为组{group}设置工资选项：{opt}。',
+        'en': 'Salary option for {group} set to {opt}.', 'ru': 'Опция зарплаты для {group} установлена: {opt}.', 'zh': '已为组{group}设置工资选项：{opt}。',
     },
     'salary_coeff': {
-        'en': 'Payment coefficients for option {opt}:\n{text}',
-        'ru': 'Платёжные коэффициенты для опции {opt}:\n{text}',
-        'zh': '选项{opt}的支付系数：\n{text}',
+        'en': 'Payment coefficients for option {opt}:\n{text}', 'ru': 'Платёжные коэффициенты для опции {opt}:\n{text}', 'zh': '选项{opt}的支付系数：\n{text}',
     },
 
     # News management
-    'btn_add': {
-        'en': 'Add',
-        'ru': 'Добавить',
-        'zh': '添加',
-    },
-    'btn_edit': {
-        'en': 'Edit',
-        'ru': 'Редактировать',
-        'zh': '编辑',
-    },
-    'btn_delete': {
-        'en': 'Delete',
-        'ru': 'Удалить',
-        'zh': '删除',
-    },
-    'news_manage': {
-        'en': 'Manage news:',
-        'ru': 'Управление новостями:',
-        'zh': '管理新闻：',
-    },
-    'cancelled': {
-        'en': 'Cancelled.',
-        'ru': 'Отменено.',
-        'zh': '已取消。',
-    },
-    'news_deleted_all': {
-        'en': 'All news deleted.',
-        'ru': 'Все новости удалены.',
-        'zh': '所有新闻已删除。',
-    },
-    'done': {
-        'en': 'Done.',
-        'ru': 'Готово.',
-        'zh': '完成。',
-    },
-    'news_edit_prompt': {
-        'en': 'Editing (demo). Send new text to update record id=1.',
-        'ru': 'Редактирование (демо). Пришлите новый текст — обновим запись c id=1.',
-        'zh': '编辑（演示）。发送新文本以更新 id=1。',
-    },
+    'btn_add':      {'en': 'Add',    'ru': 'Добавить',      'zh': '添加'},
+    'btn_edit':     {'en': 'Edit',   'ru': 'Редактировать', 'zh': '编辑'},
+    'btn_delete':   {'en': 'Delete', 'ru': 'Удалить',       'zh': '删除'},
+    'news_manage':  {'en': 'Manage news:', 'ru': 'Управление новостями:', 'zh': '管理新闻：'},
+    'news_none':    {'en': 'No news yet.',  'ru': 'Пока нет новостей.',   'zh': '暂时没有新闻。'},
+    'news_no_text': {'en': '(no text)',    'ru': '(без текста)',        'zh': '(无文本)'},
+    'news_item':    {'en': '📰 ID={id}: {text}', 'ru': '📰 ID={id}: {text}',  'zh': '📰 ID={id}：{text}'},
+    'news_photo':   {'en': 'Photo',         'ru': 'Фото',             'zh': '照片'},
+    'news_deleted_all': {'en': 'All news deleted.', 'ru': 'Все новости удалены.', 'zh': '所有新闻已删除。'},
+    'news_saved':       {'en': 'News saved successfully!', 'ru': 'Новости успешно сохранены!', 'zh': '新闻已成功保存！'},
+    'news_updated':     {'en': 'News (id=1) updated!',     'ru': 'Новость (id=1) обновлена!',     'zh': '新闻 (id=1) 已更新！'},
     'news_photos_prompt': {
         'en': 'Send up to 10 photos. Then — /done',
         'ru': 'Отправьте до 10 фотографий. После — /done',
@@ -350,70 +293,12 @@ TRANSLATIONS = {
         'ru': 'Фотографии сохранены. Теперь отправьте текст новости:',
         'zh': '照片已保存。现在发送新闻文本：',
     },
-    'news_saved': {
-        'en': 'News saved successfully!',
-        'ru': 'Новости успешно сохранены!',
-        'zh': '新闻已成功保存！',
-    },
-    'news_updated': {
-        'en': 'News (id=1) updated!',
-        'ru': 'Новость (id=1) обновлена!',
-        'zh': '新闻 (id=1) 已更新！',
-    },
+
+    # DB errors
     'db_not_initialized': {
-        'en': 'db_pool == None, not initialized!',
-        'ru': 'db_pool == None, не инициализирован!',
-        'zh': 'db_pool == None，未初始化！',
-    },
-    'news_none': {
-        'en': 'No news yet.',
-        'ru': 'Пока нет новостей.',
-        'zh': '暂时没有新闻。',
-    },
-    'news_no_text': {
-        'en': '(no text)',
-        'ru': '(без текста)',
-        'zh': '(无文本)',
-    },
-    'news_item': {
-        'en': '📰 ID={id}: {text}',
-        'ru': '📰 ID={id}: {text}',
-        'zh': '📰 ID={id}：{text}',
-    },
-    'news_photo': {
-        'en': 'Photo',
-        'ru': 'Фото',
-        'zh': '照片',
-    },
-    "off_choose_booking": {
-        "ru": "Выберите бронирование для отмены",
-        "en": "Choose a booking to cancel",
-        "zh": "选择要取消的预订"
-    },
-    "booking_cancelled": {
-        "ru": "Бронирование отменено.",
-        "en": "Booking cancelled.",
-        "zh": "预订已取消。"
-    },
-    "booking_cancelled_by_admin": {
-        "ru": "Бронирование отменено администратором.",
-        "en": "Booking cancelled by admin.",
-        "zh": "管理员已取消预订。"
-    },
-    "no_such_booking": {
-        "ru": "Такого бронирования не найдено.",
-        "en": "Booking not found.",
-        "zh": "未找到该预订。"
-    },
-    "no_active_bookings": {
-        "ru": "Нет активных бронирований.",
-        "en": "No active bookings.",
-        "zh": "没有有效的预订。"
-    },
-    "db_not_initialized": {
-        "ru": "База данных не инициализирована.",
-        "en": "Database not initialized.",
-        "zh": "数据库未初始化。"
+        'en': 'Database not initialized.',
+        'ru': 'База данных не инициализирована.',
+        'zh': '数据库未初始化。',
     },
 }
 
