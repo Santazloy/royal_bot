@@ -71,7 +71,7 @@ coverage.xml
 
 # Other
 *.swp
-ai.py
+handlers/ai.py
 
 raw.opus
 speech.ogg

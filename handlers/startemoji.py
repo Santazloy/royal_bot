@@ -1,4 +1,4 @@
-# handlers/startemoji.py
+#handlers/startemoji.py
 
 import os
 import logging
@@ -15,13 +15,11 @@ from config import is_user_admin
 logger = logging.getLogger(__name__)
 router = Router()
 
-# 15 старых + 20 новых
 AVAILABLE_EMOJIS = [
     "😎","💃","👻","🤖","👑","🦁","❤️","💰","🥇","🍕","🦋","🐶","🐱","🦊","🦄",
     "🌟","🚀","🎉","🔥","⚡","💡","🌈","⭐","🎈","🍀",
     "🎶","📚","🎮","🏆","🥳","🚴","🏖️","🎁","🧩","📷"
 ]
-
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, bot: Bot):
@@ -48,7 +46,6 @@ async def cmd_start(message: Message, bot: Bot):
         await message.answer(get_message(lang, "emoji_missing"), parse_mode="HTML")
         await send_emoji_request_to_admins(user_id, bot)
 
-
 async def send_emoji_request_to_admins(user_id: int, bot: Bot):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
@@ -68,17 +65,17 @@ async def send_emoji_request_to_admins(user_id: int, bot: Bot):
         except Exception as e:
             logger.warning(f"Не удалось отправить админу {adm}: {e}")
 
-
 @router.callback_query(F.data == "emoji")
-async def emoji_via_button(cb: CallbackQuery, state: FSMContext):
-    # вызов из админ-меню
-    await cmd_emoji(cb.message, cb.bot)
+async def emoji_via_button(cb: CallbackQuery, state: FSMContext, bot: Bot):
+    if not is_user_admin(cb.from_user.id):
+        await cb.answer("Только для админов!", show_alert=True)
+        return
+    await cmd_emoji(cb.message, bot, user_id=cb.from_user.id)
     await cb.answer()
 
-
 @router.message(Command("emoji"))
-async def cmd_emoji(message: Message, bot: Bot):
-    user_id = message.from_user.id
+async def cmd_emoji(message: Message, bot: Bot, user_id=None):
+    user_id = user_id or message.from_user.id
     lang    = await get_user_language(user_id)
 
     if not is_user_admin(user_id):
@@ -103,7 +100,6 @@ async def cmd_emoji(message: Message, bot: Bot):
         ]
     )
     await message.answer("Выберите пользователя:", reply_markup=kb)
-
 
 @router.callback_query(F.data.startswith("assign_emoji_"))
 async def callback_assign_emoji(callback: CallbackQuery, bot: Bot):
@@ -135,7 +131,6 @@ async def callback_assign_emoji(callback: CallbackQuery, bot: Bot):
             raise
     await callback.answer()
 
-
 @router.callback_query(F.data.startswith("choose_emoji_"))
 async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
     if not is_user_admin(callback.from_user.id):
@@ -166,4 +161,4 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
     try:
         await bot.send_message(target_id, f"Вам назначен эмоджи: {emo}\nТеперь доступны все команды!")
     except Exception:
-        pass
+        pass  # Игнорируем ошибки отправки, если пользователь отключил бота или заблокировал

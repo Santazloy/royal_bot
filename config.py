@@ -36,4 +36,7 @@ for part in _admins.split(","):
 print(f"Loaded ADMIN_IDS: {ADMIN_IDS}")
 
 def is_user_admin(user_id: int) -> bool:
-    return user_id in ADMIN_IDS
+    print("ADMIN_IDS in config:", ADMIN_IDS)
+    print("Checking user_id:", user_id, "type:", type(user_id))
+    print("Result:", int(user_id) in ADMIN_IDS)
+    return int(user_id) in ADMIN_IDS

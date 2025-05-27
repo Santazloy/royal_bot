@@ -4,7 +4,7 @@ import os
 import subprocess
 import pytest
 from unittest.mock import patch
-from ai import list_models
+from handlers.ai import list_models
 
 @pytest.mark.asyncio
 async def test_list_models_missing_key():

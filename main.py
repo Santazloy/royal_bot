@@ -21,6 +21,7 @@ from handlers.clean import router as clean_router
 from handlers.language import language_router
 from handlers.money import money_router
 from handlers.menu_ad import menu_ad_router  # ВАЖНО! Только импорт!
+from handlers.ai import router as ai_router
 
 from db_access.booking_repo import BookingRepo
 
@@ -42,6 +43,7 @@ async def main():
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
     dp.include_router(salary_router)
+    dp.include_router(ai_router)
     dp.include_router(clean_router)
     dp.include_router(money_router)
     dp.include_router(menu_ad_router)   # Только так!
@@ -61,6 +63,8 @@ async def main():
         BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
         BotCommand(command="/ad", description="Открыть админ-меню"),
     ])
+    # ВАЖНО: удаляем webhook перед polling, чтобы не было конфликта
+    await bot.delete_webhook(drop_pending_updates=True)
     try:
         await dp.start_polling(bot)
     finally:
