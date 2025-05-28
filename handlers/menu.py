@@ -27,7 +27,7 @@ menu_router = Router()
 last_menu_message: dict[int, int] = {}
 
 # file_id картинки (фото) для главного меню:
-MENU_PHOTO_ID = "AgACAgQAAyEFAASJKijTAAIZ_mgjKdj-Sa3MdMHW-pSy_qLMhJOKAAJPxzEba90JUQfUH5f_fWYoAQADAgADeQADNgQ"
+MENU_PHOTO_ID = "AgACAgQAAxkBAAIC0mg1lkPQDcWblay14vq1lWCK6RvsAAIoyDEbJ_eoUVnJGXuRK_BVAQADAgADeQADNgQ"
 
 
 @menu_router.message(Command("menu"))
