@@ -1,5 +1,3 @@
-# handlers/clean.py
-
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -17,7 +15,8 @@ from handlers.booking.reporting import update_group_message
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Store last bot-sent message per chat
+PHOTO_ID = "AgACAgUAAxkDAAIEMmg4LTm7LDOGrTgW2WCA219ZynwrAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
+
 last_bot_message: dict[int, int] = {}
 
 async def safe_answer(entity, text: str = None, **kwargs):
@@ -35,17 +34,19 @@ async def safe_answer(entity, text: str = None, **kwargs):
         except:
             pass
 
-    # Send new message
-    if 'photo' in kwargs:
-        if hasattr(entity, 'message') and hasattr(entity.message, 'answer_photo'):
-            sent = await entity.message.answer_photo(**kwargs)
-        else:
-            sent = await entity.answer_photo(**kwargs)
+    # Send new message always with photo
+    if 'reply_markup' in kwargs:
+        reply_markup = kwargs['reply_markup']
     else:
-        if hasattr(entity, 'message') and hasattr(entity.message, 'answer'):
-            sent = await entity.message.answer(text or "", **kwargs)
-        else:
-            sent = await entity.answer(text or "", **kwargs)
+        reply_markup = None
+
+    sent = None
+    if text is None:
+        text = ""
+    if hasattr(entity, 'message') and hasattr(entity.message, 'answer_photo'):
+        sent = await entity.message.answer_photo(photo=PHOTO_ID, caption=text, reply_markup=reply_markup, parse_mode="HTML")
+    else:
+        sent = await entity.answer_photo(photo=PHOTO_ID, caption=text, reply_markup=reply_markup, parse_mode="HTML")
 
     last_bot_message[chat_id] = sent.message_id
     return sent
@@ -56,12 +57,20 @@ class CleanupStates(StatesGroup):
     waiting_for_confirmation = State()
 
 @router.message(Command("clean"))
+@router.callback_query(F.data == "clean")
 async def cmd_clean(entry: Message | CallbackQuery, state: FSMContext):
     user_id = entry.from_user.id
     lang    = await get_user_language(user_id)
     if not is_user_admin(user_id):
         txt = get_message(lang, "no_permission")
-        return await safe_answer(entry, txt, parse_mode="HTML")
+        return await safe_answer(entry, txt)
+
+    # Удаление исходного сообщения (если вызвано кнопкой)
+    if isinstance(entry, CallbackQuery):
+        try:
+            await entry.bot.delete_message(chat_id=entry.message.chat.id, message_id=entry.message.message_id)
+        except:
+            pass
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -74,7 +83,7 @@ async def cmd_clean(entry: Message | CallbackQuery, state: FSMContext):
         ],
     ])
     prompt = get_message(lang, "clean_prompt")
-    await safe_answer(entry, prompt, parse_mode="HTML", reply_markup=kb)
+    await safe_answer(entry, prompt, reply_markup=kb)
     await state.update_data(base_chat_id=(entry.message.chat.id if hasattr(entry, 'message') else entry.chat.id))
     await state.set_state(CleanupStates.waiting_for_main_menu)
 
@@ -85,21 +94,20 @@ async def process_clean_menu(cb: CallbackQuery, state: FSMContext):
 
     if choice == "all":
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(get_message(lang, "clean_confirm_all"), callback_data="confirm_all_all")],
-            [InlineKeyboardButton(get_message(lang, "btn_cancel"),         callback_data="clean_cancel")],
+            [InlineKeyboardButton(text=get_message(lang, "clean_confirm_all"), callback_data="confirm_all_all")],
+            [InlineKeyboardButton(text=get_message(lang, "btn_cancel"),         callback_data="clean_cancel")],
         ])
-        await safe_answer(cb, get_message(lang, "clean_confirm_all_prompt"), parse_mode="HTML", reply_markup=kb)
+        await safe_answer(cb, get_message(lang, "clean_confirm_all_prompt"), reply_markup=kb)
         await state.set_state(CleanupStates.waiting_for_confirmation)
         return
 
     label = get_message(lang, f"clean_{choice}")
-    rows  = [[InlineKeyboardButton(get_message(lang, f"clean_all_{choice}"), callback_data=f"sect_all_{choice}")]]
+    rows  = [[InlineKeyboardButton(text=get_message(lang, f"clean_all_{choice}"), callback_data=f"sect_all_{choice}")]]
     for grp in groups_data:
-        rows.append([InlineKeyboardButton(grp, callback_data=f"sect_grp_{choice}_{grp}")])
-    rows.append([InlineKeyboardButton(get_message(lang, "btn_cancel"), callback_data="clean_cancel")])
+        rows.append([InlineKeyboardButton(text=grp, callback_data=f"sect_grp_{choice}_{grp}")])
+    rows.append([InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="clean_cancel")])
 
-    await safe_answer(cb, get_message(lang, "clean_section_prompt", section=label), parse_mode="HTML",
-                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await safe_answer(cb, get_message(lang, "clean_section_prompt", section=label), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await state.update_data(clean_section=choice)
     await state.set_state(CleanupStates.waiting_for_group_choice)
 
@@ -140,12 +148,12 @@ async def process_section_group_choice(cb: CallbackQuery, state: FSMContext):
         return await safe_answer(cb, get_message(lang, "no_such_group"), show_alert=True)
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(get_message(lang, "clean_confirm_group"),
+        [InlineKeyboardButton(text=get_message(lang, "clean_confirm_group"),
                               callback_data=f"confirm_grp_{section}_{grp}")],
-        [InlineKeyboardButton(get_message(lang, "btn_cancel"), callback_data="clean_cancel")]
+        [InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="clean_cancel")]
     ])
     await safe_answer(cb, get_message(lang, "clean_group_prompt", section=get_message(lang, f"clean_{section}"), group=grp),
-                      parse_mode="HTML", reply_markup=kb)
+                      reply_markup=kb)
     await state.set_state(CleanupStates.waiting_for_confirmation)
 
 @router.callback_query(CleanupStates.waiting_for_confirmation, F.data.startswith("confirm_grp_"))
