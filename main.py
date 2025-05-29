@@ -1,3 +1,4 @@
+# main.py
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
@@ -5,7 +6,7 @@ from aiogram.types import BotCommand
 from config import TELEGRAM_BOT_TOKEN
 import db
 
-# роутеры
+# Импорт роутеров
 from handlers.group_id import router as group_id_router
 from handlers.news import router as news_router
 from handlers.idphoto import router as idphoto_router
@@ -22,27 +23,42 @@ from handlers.menu_ad import menu_ad_router
 from handlers.ai import router as ai_router
 from db_access.booking_repo import BookingRepo
 
+
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    # Подробное логирование
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S"
+    )
+    logger = logging.getLogger(__name__)
+
+    logger.info("Запуск приложения...")
 
     # Инициализация подключения к БД
+    logger.debug("Инициализация подключения к базе данных...")
     await db.init_db_pool()
     await db.create_tables()
+    logger.info("База данных и таблицы успешно инициализированы.")
 
     # Загрузка данных бронирований
+    logger.debug("Загрузка данных бронирований...")
     repo = BookingRepo(db.db_pool)
     await repo.load_data()
-    logging.info("Слоты и статусы загружены из БД.")
+    logger.info("Слоты и статусы загружены из БД.")
 
     # Загрузка настроек salary
+    logger.debug("Загрузка настроек salary из БД...")
     await load_salary_data_from_db()
-    logging.info("Настройки salary загружены из БД.")
+    logger.info("Настройки salary успешно загружены из БД.")
 
     # Настройка бота и диспетчера
+    logger.debug("Создание экземпляра бота и диспетчера...")
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
 
-    # Подключаем маршрутизаторы
+    # Подключение маршрутизаторов
+    logger.debug("Подключение роутеров...")
     dp.include_router(language_router)
     dp.include_router(group_id_router)
     dp.include_router(news_router)
@@ -55,9 +71,11 @@ async def main():
     dp.include_router(money_router)
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
+    logger.info("Все роутеры успешно подключены.")
 
     # Установка команд бота
-    await bot.set_my_commands([
+    logger.debug("Установка команд бота...")
+    commands = [
         BotCommand(command="/start", description="Начать"),
         BotCommand(command="/help", description="Помощь"),
         BotCommand(command="/added", description="Управление новостями"),
@@ -70,16 +88,27 @@ async def main():
         BotCommand(command="/off", description="Отменить свою бронь"),
         BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
         BotCommand(command="/ad", description="Открыть админ-меню"),
-    ])
+    ]
+    await bot.set_my_commands(commands)
+    logger.info("Команды бота успешно установлены.")
 
-    # Удаляем webhook перед polling
+    # Удаляем webhook перед запуском polling
+    logger.debug("Удаление webhook (если установлен)...")
     await bot.delete_webhook(drop_pending_updates=True)
+    logger.info("Webhook удалён. Добавляем задержку для стабилизации соединения...")
+    await asyncio.sleep(2)
 
     # Запуск polling
+    logger.info("Запуск polling для получения обновлений от Telegram...")
     try:
         await dp.start_polling(bot, skip_updates=True)
+    except Exception as e:
+        logger.error("Ошибка во время polling: %s", e)
     finally:
+        logger.debug("Закрытие подключения к базе данных...")
         await db.close_db_pool()
+        logger.info("Подключение к базе данных закрыто. Завершение работы приложения.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

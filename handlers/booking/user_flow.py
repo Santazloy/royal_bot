@@ -1,4 +1,5 @@
 # handlers/booking/user_flow.py
+
 from aiogram import F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from aiogram.filters.command import Command
@@ -22,6 +23,8 @@ from utils.time_utils import (
 )
 from handlers.booking.reporting import send_booking_report, update_group_message
 from app_states import BookUserStates
+from utils.bot_utils import safe_answer
+
 
 @router.message(Command("book"))
 async def cmd_book(message: Message, state: FSMContext):
@@ -33,14 +36,15 @@ async def cmd_book(message: Message, state: FSMContext):
             for i in range(0, len(keys), 3)
         ]
     )
-    await message.answer_photo(photo=GROUP_CHOICE_IMG, caption="", reply_markup=kb)
+    await safe_answer(message, photo=GROUP_CHOICE_IMG, reply_markup=kb)
     await state.set_state(BookUserStates.waiting_for_group)
+
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_group), F.data.startswith("bkgrp_"))
 async def user_select_group(cb: CallbackQuery, state: FSMContext):
     gk = cb.data.removeprefix("bkgrp_")
     if gk not in groups_data:
-        return await cb.answer("Нет такой группы!", show_alert=True)
+        return await safe_answer(cb, "Нет такой группы!", show_alert=True)
     await state.update_data(selected_group=gk)
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -49,22 +53,17 @@ async def user_select_group(cb: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="Завтра",   callback_data="bkday_Завтра"),
         ]
     ])
-    try:
-        await cb.message.edit_media(
-            media=InputMediaPhoto(media=DAY_CHOICE_IMG, caption=""),
-            reply_markup=kb
-        )
-    except TelegramBadRequest:
-        await cb.message.answer_photo(photo=DAY_CHOICE_IMG, caption="", reply_markup=kb)
-
+    await safe_answer(cb, photo=DAY_CHOICE_IMG, reply_markup=kb)
     await cb.answer()
     await state.set_state(BookUserStates.waiting_for_day)
+
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_day), F.data.startswith("bkday_"))
 async def user_select_day(cb: CallbackQuery, state: FSMContext):
     day = cb.data.removeprefix("bkday_")
     await state.update_data(selected_day=day)
     await send_time_slots(cb, day, state)
+
 
 async def send_time_slots(
     callback_query: CallbackQuery,
@@ -99,18 +98,10 @@ async def send_time_slots(
     text = get_message(lang, 'choose_time_styled', day=day_label)
     caption = format_html_pre(text)
 
-    try:
-        await callback_query.message.edit_media(
-            media=InputMediaPhoto(media=TIME_CHOICE_IMG, caption=caption),
-            reply_markup=kb
-        )
-    except TelegramBadRequest:
-        await callback_query.message.answer_photo(
-            photo=TIME_CHOICE_IMG, caption=caption, reply_markup=kb
-        )
-
+    await safe_answer(callback_query, photo=TIME_CHOICE_IMG, caption=caption, reply_markup=kb)
     await callback_query.answer()
     await state.set_state(BookUserStates.waiting_for_time)
+
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
 async def user_select_time(cb: CallbackQuery, state: FSMContext):
@@ -128,13 +119,7 @@ async def user_select_time(cb: CallbackQuery, state: FSMContext):
     lang = await get_user_language(uid)
     txt = get_message(lang, 'slot_booked', time=slot, day=day, group=gk)
     caption = format_html_pre(txt)
-    try:
-        await cb.message.edit_media(
-            media=InputMediaPhoto(media=FINAL_BOOKED_IMG, caption=caption),
-            reply_markup=None,
-        )
-    except TelegramBadRequest:
-        await cb.message.answer_photo(photo=FINAL_BOOKED_IMG, caption=caption)
+    await safe_answer(cb, photo=FINAL_BOOKED_IMG, caption=caption)
 
     await cb.answer()
     await update_group_message(cb.bot, gk)

@@ -1,4 +1,5 @@
 # handlers/booking/admin_flow.py
+
 from aiogram import F
 from aiogram.types import CallbackQuery
 from aiogram.enums import ParseMode
@@ -8,6 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 from handlers.booking.router import router
 from constants.booking_const import status_mapping, groups_data
 from handlers.booking.reporting import update_group_message
+from utils.bot_utils import safe_answer
 
 @router.callback_query(F.data.startswith("group_time|"))
 async def admin_click_slot(cb: CallbackQuery):
@@ -42,7 +44,8 @@ async def admin_click_slot(cb: CallbackQuery):
         ]
     ])
 
-    await cb.message.edit_text(
+    await safe_answer(
+        cb,
         "<b>Выберите финальный статус слота:</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=kb
@@ -99,7 +102,7 @@ async def admin_click_status(cb: CallbackQuery):
             logger.error(f"DB error on delete: {e}")
 
         await update_group_message(cb.bot, gk)
-        return await cb.answer("Слот отменён.")
+        return await safe_answer(cb, "Слот отменён.")
 
     # Устанавливаем финальный статус
     emoji = status_mapping.get(code)
@@ -131,11 +134,11 @@ async def admin_click_status(cb: CallbackQuery):
     from handlers.booking.rewards import apply_special_user_reward
     await apply_special_user_reward(code, cb.bot)
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    pay_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"),
-        InlineKeyboardButton(text="безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"),
-        InlineKeyboardButton(text="агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent"),
+    from aiogram.types import InlineKeyboardMarkup as _IKM, InlineKeyboardButton as _IKB
+    pay_kb = _IKM(inline_keyboard=[[
+        _IKB(text="наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"),
+        _IKB(text="безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"),
+        _IKB(text="агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent"),
     ]])
-    await cb.message.edit_text("Выберите способ оплаты:", parse_mode=ParseMode.HTML, reply_markup=pay_kb)
+    await safe_answer(cb, "Выберите способ оплаты:", parse_mode=ParseMode.HTML, reply_markup=pay_kb)
     await cb.answer()

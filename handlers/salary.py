@@ -1,5 +1,3 @@
-# handlers/salary.py
-
 import logging
 
 from aiogram import Router, F
@@ -19,9 +17,15 @@ from constants.booking_const import groups_data
 from constants.salary import salary_options
 from states.salary_states import SalaryStates
 from handlers.language import get_user_language, get_message
+from utils.bot_utils import safe_answer  # общая функция для удаления предыдущего сообщения
 
 logger = logging.getLogger(__name__)
 salary_router = Router()
+
+# Uniform photo for all salary messages
+SALARY_PHOTO = (
+    "AgACAgUAAyEFAASVOrsCAAIDEGg23brrLiadZoeFJf_tyxhHjaDIAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
+)
 
 
 async def load_salary_data_from_db():
@@ -36,10 +40,12 @@ async def load_salary_data_from_db():
 
     try:
         async with pool.acquire() as conn:
-            rows = await conn.fetch("""
+            rows = await conn.fetch(
+                """
                 SELECT group_key, salary_option, salary, cash, message_id
                   FROM group_financial_data
-            """)
+                """
+            )
     except Exception as e:
         logger.error(f"Error loading salary data: {e}")
         return
@@ -48,30 +54,17 @@ async def load_salary_data_from_db():
         gk = row["group_key"]
         if gk in groups_data:
             groups_data[gk]["salary_option"] = row["salary_option"]
-            groups_data[gk]["salary"]        = row["salary"]
-            groups_data[gk]["cash"]          = row["cash"]
-            groups_data[gk]["message_id"]    = row["message_id"]
+            groups_data[gk]["salary"] = row["salary"]
+            groups_data[gk]["cash"] = row["cash"]
+            groups_data[gk]["message_id"] = row["message_id"]
 
     logger.info("Salary settings loaded from DB.")
 
 
 async def _salary_init(entry: Message | CallbackQuery, state: FSMContext):
-    # Определяем источник (Message или CallbackQuery)
-    if isinstance(entry, CallbackQuery):
-        user_id   = entry.from_user.id
-        send_fn   = entry.message.answer
-        finish_fn = entry.answer
-    else:
-        user_id   = entry.from_user.id
-        send_fn   = entry.answer
-        finish_fn = None
-
-    lang = await get_user_language(user_id)
-    if not is_user_admin(user_id):
-        txt = get_message(lang, "admin_only")
-        if finish_fn:
-            return await finish_fn(txt, show_alert=True)
-        return await send_fn(txt)
+    lang = await get_user_language(entry.from_user.id)
+    if not is_user_admin(entry.from_user.id):
+        return await safe_answer(entry, get_message(lang, "admin_only"), show_alert=True)
 
     # Шаг 1: выбор группы
     keys = list(groups_data.keys())
@@ -81,15 +74,19 @@ async def _salary_init(entry: Message | CallbackQuery, state: FSMContext):
         buttons.append(
             [InlineKeyboardButton(text=k, callback_data=f"salary_group_{k}") for k in chunk]
         )
-    # Кнопка отмены
-    buttons.append([InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="salary_cancel")])
-
+    buttons.append(
+        [InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="salary_cancel")]
+    )
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await send_fn(get_message(lang, "salary_choose_group"), reply_markup=kb)
-    await state.set_state(SalaryStates.waiting_for_group_choice)
 
-    if finish_fn:
-        await finish_fn()
+    # Отправляем меню выбора группы вместе с фото
+    await safe_answer(
+        entry,
+        photo=SALARY_PHOTO,
+        caption=get_message(lang, "salary_choose_group"),
+        reply_markup=kb,
+    )
+    await state.set_state(SalaryStates.waiting_for_group_choice)
 
 
 @salary_router.message(Command("salary"))
@@ -119,22 +116,21 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
     await state.update_data(selected_group=group)
     current = groups_data[group].get("salary_option", 1)
 
-    # Шаг 2: выбор опции
+    # Шаг 2: выбор опции (1–4)
     opts = []
     for opt in (1, 2, 3, 4):
         mark = "✅" if opt == current else "   "
-        opts.append([
-            InlineKeyboardButton(
-                text=f"{mark} {opt}",
-                callback_data=f"salary_opt_{opt}"
-            )
-        ])
+        opts.append(
+            [InlineKeyboardButton(text=f"{mark} {opt}", callback_data=f"salary_opt_{opt}")]
+        )
     opts.append([InlineKeyboardButton(text=get_message(lang, "btn_cancel"), callback_data="salary_cancel")])
+    kb = InlineKeyboardMarkup(inline_keyboard=opts)
 
-    await callback.message.edit_text(
-        get_message(lang, "salary_option_prompt", group=group, current=current),
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=opts)
+    await safe_answer(
+        callback,
+        photo=SALARY_PHOTO,
+        caption=get_message(lang, "salary_option_prompt", group=group, current=current),
+        reply_markup=kb,
     )
     await state.set_state(SalaryStates.waiting_for_option_choice)
     await callback.answer()
@@ -150,13 +146,13 @@ async def process_option(callback: CallbackQuery, state: FSMContext):
         return await callback.answer(get_message(lang, "admin_only"), show_alert=True)
 
     opt = int(callback.data.removeprefix("salary_opt_"))
-    data  = await state.get_data()
+    data = await state.get_data()
     group = data.get("selected_group")
     if group not in groups_data or opt not in salary_options:
         await state.clear()
         return await callback.answer(get_message(lang, "invalid_data"), show_alert=True)
 
-    # Сохраняем новое значение в память и БД
+    # Save new selection
     groups_data[group]["salary_option"] = opt
     if db.db_pool:
         async with db.db_pool.acquire() as conn:
@@ -174,19 +170,15 @@ async def process_option(callback: CallbackQuery, state: FSMContext):
             )
 
     await state.clear()
-    # Отправляем подтверждение
-    await callback.message.answer(
+
+    # Send confirmation (no keyboard)
+    await safe_answer(
+        callback,
         get_message(lang, "salary_set", group=group, opt=opt),
         parse_mode="HTML"
     )
-    await callback.answer(get_message(lang, "done"), show_alert=True)
-
-    # И выводим текущие коэффициенты
-    coeff_text = "\n".join(f"{emoji}: {v}" for emoji, v in salary_options[opt].items())
-    await callback.message.answer(
-        get_message(lang, "salary_coeff", opt=opt, text=coeff_text)
-    )
-
+    # close the “loading” spinner
+    await callback.answer()
 
 @salary_router.callback_query(
     F.data == "salary_cancel",

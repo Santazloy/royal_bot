@@ -1,3 +1,4 @@
+# handlers/language.py
 from aiogram import Router, F
 from aiogram.filters.command import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -296,28 +297,71 @@ TRANSLATIONS = {
 
     # Money command
     'choose_what_change': {
-        'en': 'What do you want to change?', 'ru': 'Что вы хотите изменить?', 'zh': '您想要修改什么？'
+        'en': 'What do you want to change?',
+        'ru': 'Что вы хотите изменить?',
+        'zh': '您想要修改什么？',
     },
     'select_operation': {
-        'en': 'Select operation:', 'ru': 'Выберите операцию:', 'zh': '请选择操作：'
+        'en': 'Select operation:',
+        'ru': 'Выберите операцию:',
+        'zh': '请选择操作：',
     },
     'enter_amount': {
-        'en': 'Enter the amount:', 'ru': 'Введите сумму:', 'zh': '请输入金额：'
+        'en': 'Enter the amount:',
+        'ru': 'Введите сумму:',
+        'zh': '请输入金额：',
     },
     'done': {
-        'en': 'Operation completed. Data updated.', 'ru': 'Операция завершена. Данные обновлены.', 'zh': '操作完成。数据已更新。'
+        'en': 'Operation completed. Data updated.',
+        'ru': 'Операция завершена. Данные обновлены.',
+        'zh': '操作完成。数据已更新。',
     },
     'salary': {
-        'en': 'Salary', 'ru': 'Зарплата', 'zh': '工资'
+        'en': 'Salary',
+        'ru': 'Зарплата',
+        'zh': '工资',
     },
     'cash': {
-        'en': 'Cash', 'ru': 'Наличные', 'zh': '现金'
+        'en': 'Cash',
+        'ru': 'Наличные',
+        'zh': '现金',
     },
     'plus': {
-        'en': '➕', 'ru': '➕', 'zh': '➕'
+        'en': '➕',
+        'ru': '➕',
+        'zh': '➕',
     },
     'minus': {
-        'en': '➖', 'ru': '➖', 'zh': '➖'
+        'en': '➖',
+        'ru': '➖',
+        'zh': '➖',
+    },
+
+    # Новые ключи для money.py
+    'money_choose_type': {
+        'en': 'Select operation type:',
+        'ru': 'Выберите тип операции:',
+        'zh': '请选择操作类型：',
+    },
+    'money_choose_group': {
+        'en': 'Select a group:',
+        'ru': 'Выберите группу:',
+        'zh': '请选择群组：',
+    },
+    'money_choose_op': {
+        'en': 'Select operation for group {group}:',
+        'ru': 'Выберите операцию для группы {group}:',
+        'zh': '请选择群组 {group} 的操作：',
+    },
+    'money_amount_prompt': {
+        'en': 'Please enter the amount for group {group}:',
+        'ru': 'Введите сумму для группы {group}:',
+        'zh': '请输入群组 {group} 的金额：',
+    },
+    'invalid_amount': {
+        'en': 'Invalid amount.',
+        'ru': 'Неверная сумма.',
+        'zh': '金额无效。',
     },
 
     # Salary admin

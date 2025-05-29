@@ -1,8 +1,12 @@
-# handlers/money.py
-
 import logging
+
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from aiogram.filters.command import Command
 from aiogram.filters.state import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -11,8 +15,8 @@ from aiogram.fsm.state import State, StatesGroup
 import db
 from config import is_user_admin
 from constants.booking_const import groups_data
+from handlers.booking.reporting import update_group_message, send_financial_report
 from handlers.language import get_user_language, get_message
-from handlers.booking.reporting import update_group_message
 
 logger = logging.getLogger(__name__)
 money_router = Router()
@@ -25,191 +29,210 @@ class MoneyStates(StatesGroup):
     waiting_for_amount = State()
 
 
-def _safe_get(lang: str, key: str, fallback: str, **kwargs) -> str:
-    raw = get_message(lang, key, **kwargs)
-    return raw if raw and raw.strip() else fallback
+# Единое фото для всех шагов
+MONEY_PHOTO = (
+    "AgACAgUAAyEFAASVOrsCAAIDEGg23brrLiadZoeFJf_tyxhHjaDIAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
+)
 
 
-async def _money_init(entry, state: FSMContext):
-    # source may be Message or CallbackQuery
+async def _send_photo(
+    entry: Message | CallbackQuery,
+    caption: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+    parse_mode: str | None = None,
+):
+    """
+    Удаляет предыдущее бот-сообщение (если есть), потом отправляет фото с подписью.
+    """
+    # Определяем, у кого удалять и кому отвечать
     if isinstance(entry, CallbackQuery):
-        user_id = entry.from_user.id
-        send_fn = entry.message.answer
-        finish_fn = entry.answer
+        target = entry.message
+        await entry.answer()  # закрываем спиннер
     else:
-        user_id = entry.from_user.id
-        send_fn = entry.answer
-        finish_fn = None
+        target = entry
 
-    lang = await get_user_language(user_id)
-    if not is_user_admin(user_id):
-        text = _safe_get(lang, "no_permission", "У вас нет прав для выполнения этого действия.")
-        if finish_fn:
-            return await finish_fn(text, show_alert=True)
-        return await send_fn(text)
+    # Пробуем удалить старое
+    try:
+        await target.delete()
+    except Exception:
+        pass
 
-    # Step 1: choose type
-    btn_salary = _safe_get(lang, "money_type_salary", "Зарплата")
-    btn_cash = _safe_get(lang, "money_type_cash", "Наличные")
-    btn_cancel = _safe_get(lang, "btn_cancel", "Отмена")
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=btn_salary, callback_data="money_type_salary")],
-        [InlineKeyboardButton(text=btn_cash, callback_data="money_type_cash")],
-        [InlineKeyboardButton(text=btn_cancel, callback_data="money_cancel")]
-    ])
-    text = _safe_get(lang, "money_choose_type", "Выберите тип изменения:")
-    logger.debug(f"[money] show type menu: {text}")
-    sent = await send_fn(text, reply_markup=kb)
-    await state.set_state(MoneyStates.waiting_for_type)
-    if finish_fn:
-        await finish_fn()
+    # Формируем параметры для answer_photo
+    params: dict = {"photo": MONEY_PHOTO, "caption": caption}
+    if reply_markup:
+        params["reply_markup"] = reply_markup
+    if parse_mode:
+        params["parse_mode"] = parse_mode
+
+    # Отправляем новое фото
+    await target.answer_photo(**params)
 
 
 @money_router.message(Command("money"))
-async def cmd_money_message(message: Message, state: FSMContext):
+async def money_command(message: Message, state: FSMContext):
+    """Точка входа: /money"""
     await _money_init(message, state)
 
 
 @money_router.callback_query(F.data == "money")
-async def cmd_money_callback(cb: CallbackQuery, state: FSMContext):
+async def money_via_button(cb: CallbackQuery, state: FSMContext):
+    """Точка входа через инлайн-кнопку “Money”"""
     await _money_init(cb, state)
 
 
-@money_router.callback_query(MoneyStates.waiting_for_type, F.data.startswith("money_type_"))
-async def process_money_type(cb: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(cb.from_user.id)
-    choice = cb.data.removeprefix("money_type_")
-    await state.update_data(type=choice)
+async def _money_init(entry: Message | CallbackQuery, state: FSMContext):
+    """
+    Шаг 1: выбор типа (salary или cash).
+    """
+    user_id = entry.from_user.id
+    lang = await get_user_language(user_id)
 
-    # Step 2: choose group
-    btn_cancel = _safe_get(lang, "btn_cancel", "Отмена")
-    rows = [[InlineKeyboardButton(text=grp, callback_data=f"money_group_{grp}")] for grp in groups_data]
+    if not is_user_admin(user_id):
+        text = get_message(lang, "no_permission")
+        if isinstance(entry, CallbackQuery):
+            return await entry.answer(text, show_alert=True)
+        return await entry.answer(text)
+
+    btn_salary = get_message(lang, "btn_salary")
+    btn_cash = get_message(lang, "btn_cash")
+    btn_cancel = get_message(lang, "btn_cancel")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=btn_salary, callback_data="money_type_salary")],
+        [InlineKeyboardButton(text=btn_cash, callback_data="money_type_cash")],
+        [InlineKeyboardButton(text=btn_cancel, callback_data="money_cancel")],
+    ])
+
+    text = get_message(lang, "money_choose_type")
+    await _send_photo(entry, text, reply_markup=kb)
+    await state.set_state(MoneyStates.waiting_for_type)
+
+
+@money_router.callback_query(
+    F.data.startswith("money_type_"),
+    StateFilter(MoneyStates.waiting_for_type),
+)
+async def process_money_type(cb: CallbackQuery, state: FSMContext):
+    """
+    Шаг 2: пользователь выбрал salary или cash.
+    """
+    lang = await get_user_language(cb.from_user.id)
+    typ = cb.data.removeprefix("money_type_")
+    if typ not in ("salary", "cash"):
+        return await cb.answer(get_message(lang, "invalid_data"), show_alert=True)
+
+    await state.update_data(type=typ)
+
+    btn_cancel = get_message(lang, "btn_cancel")
+    rows = [[InlineKeyboardButton(text=grp, callback_data=f"money_group_{grp}")]
+            for grp in groups_data]
     rows.append([InlineKeyboardButton(text=btn_cancel, callback_data="money_cancel")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    text = _safe_get(lang, "money_choose_group", "Выберите группу:")
-    logger.debug(f"[money] choose group: {text}")
-    await cb.message.edit_text(text, reply_markup=kb)
+
+    text = get_message(lang, "money_choose_group")
+    await _send_photo(cb, text, reply_markup=kb)
     await state.set_state(MoneyStates.waiting_for_group_choice)
-    await cb.answer()
 
 
-@money_router.callback_query(MoneyStates.waiting_for_group_choice, F.data.startswith("money_group_"))
+@money_router.callback_query(
+    F.data.startswith("money_group_"),
+    StateFilter(MoneyStates.waiting_for_group_choice),
+)
 async def process_money_group(cb: CallbackQuery, state: FSMContext):
+    """
+    Шаг 3: пользователь выбрал группу ⇒ показываем ➕/➖.
+    """
     lang = await get_user_language(cb.from_user.id)
     group = cb.data.removeprefix("money_group_")
     if group not in groups_data:
-        text = _safe_get(lang, "no_such_group", "Нет такой группы.")
-        return await cb.answer(text, show_alert=True)
+        return await cb.answer(get_message(lang, "no_such_group"), show_alert=True)
+
     await state.update_data(group=group)
 
-    # Step 3: choose operation
-    btn_cancel = _safe_get(lang, "btn_cancel", "Отмена")
+    btn_cancel = get_message(lang, "btn_cancel")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕", callback_data="money_op_add")],
         [InlineKeyboardButton(text="➖", callback_data="money_op_sub")],
-        [InlineKeyboardButton(text=btn_cancel, callback_data="money_cancel")]
+        [InlineKeyboardButton(text=btn_cancel, callback_data="money_cancel")],
     ])
-    text = _safe_get(lang, "money_choose_op", f"Выберите операцию для группы {group}:")
-    logger.debug(f"[money] choose op for {group}: {text}")
-    await cb.message.edit_text(text, reply_markup=kb)
+
+    text = get_message(lang, "money_choose_op", group=group)
+    await _send_photo(cb, text, reply_markup=kb)
     await state.set_state(MoneyStates.waiting_for_operation)
-    await cb.answer()
 
 
-@money_router.callback_query(MoneyStates.waiting_for_operation, F.data.startswith("money_op_"))
+@money_router.callback_query(
+    F.data.startswith("money_op_"),
+    StateFilter(MoneyStates.waiting_for_operation),
+)
 async def process_money_op(cb: CallbackQuery, state: FSMContext):
+    """
+    Шаг 4: запрашиваем сумму, отправляя фото + жирный emoji-префикс.
+    """
     lang = await get_user_language(cb.from_user.id)
     op = cb.data.removeprefix("money_op_")
     await state.update_data(operation=op)
+
     data = await state.get_data()
-    group = data.get("group")
+    group = data["group"]
 
-    # Step 4: input amount
-    raw = get_message(lang, "money_amount_prompt", group=group)
-    prompt = raw if raw and raw.strip() else f"Введите сумму для {'добавления' if op=='add' else 'вычитания'} в группе {group}:"
-    logger.debug(f"[money] prompt amount: {prompt}")
-    await cb.message.edit_text(prompt, parse_mode="HTML")
+    prompt = get_message(lang, "money_amount_prompt", group=group)
+    if not prompt.strip():
+        prompt = f"Введите сумму для {'добавления' if op=='add' else 'вычитания'} в группе {group}:"
+
+    caption = f"<b>💰 {prompt}</b>"
+    await _send_photo(cb, caption, parse_mode="HTML")
     await state.set_state(MoneyStates.waiting_for_amount)
-    await cb.answer()
 
 
-@money_router.message(StateFilter(MoneyStates.waiting_for_amount), F.text)
+@money_router.message(
+    F.text,
+    StateFilter(MoneyStates.waiting_for_amount),
+)
 async def process_money_amount(message: Message, state: FSMContext):
+    """
+    Финальный шаг: обновляем БД, in-memory, перерисовываем group-сообщение, отправляем отчёт.
+    """
     lang = await get_user_language(message.from_user.id)
     data = await state.get_data()
-    group = data.get("group")
-    op = data.get("operation")
-    typ = data.get("type")
+    group = data["group"]
+    op = data["operation"]
+    typ = data["type"]
+    text_ = message.text.strip()
 
-    text = message.text.strip()
-    if not text.isdigit():
-        err = _safe_get(lang, "invalid_amount", "Неверная сумма.")
-        return await message.answer(err)
-    amount = int(text)
+    if not text_.isdigit():
+        return await message.answer(get_message(lang, "invalid_amount"))
 
-    col = 'salary' if typ == 'salary' else 'cash'
+    amount = int(text_)
+    col = "salary" if typ == "salary" else "cash"
     current = groups_data[group].get(col, 0)
-    new_value = current + amount if op == 'add' else current - amount
+    new_val = current + (amount if op == "add" else -amount)
 
     if db.db_pool:
         async with db.db_pool.acquire() as conn:
-            query = f"UPDATE group_financial_data SET {col}=$1 WHERE group_key=$2"
-            await conn.execute(query, new_value, group)
-    groups_data[group][col] = new_value
-    # Обновляем сообщение группы
-    await update_group_message(message.bot, group)
+            await conn.execute(
+                f"UPDATE group_financial_data SET {col}=$1 WHERE group_key=$2",
+                new_val, group
+            )
 
-    result_text = _safe_get(
-        lang,
-        "money_result",
-        f"Группа {group}: новое значение {col} = {new_value}",
-        group=group, type=typ, amount=amount, new=new_value
-    )
-    await message.answer(result_text, parse_mode="HTML")
+    groups_data[group][col] = new_val
+
+    # Перерисовываем group-сообщение
+    await update_group_message(message.bot, group)
+    # Отправляем общий финансовый отчёт
+    await send_financial_report(message.bot)
+
     await state.clear()
 
 
 @money_router.callback_query(F.data == "money_cancel")
 async def money_cancel(cb: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(cb.from_user.id)
+    """
+    Отмена: удаляем меню и сбрасываем state.
+    """
+    await state.clear()
     try:
         await cb.message.delete()
-    except:
+    except Exception:
         pass
-    text = _safe_get(lang, "cancelled", "Отменено.")
-    await cb.answer(text)
-    await state.clear()
-
-
-# Алиас для админ-меню (тест money_command)
-async def money_command(entry, state: FSMContext):
-    """
-    Alias for admin menu to launch money flow
-    """
-    lang = await get_user_language(entry.from_user.id)
-    text = get_message(lang, "money_choose_type")
-    sent = await entry.answer(text)
-    await sent.edit_reply_markup()
-
-# Тестовые хуки
-async def money_select_type(cb: CallbackQuery, state: FSMContext):
-    """
-    Test hook: select money type directly
-    """
-    lang = await get_user_language(cb.from_user.id)
-    await state.update_data(type=cb.data.removeprefix("money_"))
-    text = get_message(lang, "money_choose_group")
-    await cb.message.edit_text(text)
-    await state.set_state(MoneyStates.waiting_for_group_choice)
-    await cb.answer()
-
-async def money_operation(cb: CallbackQuery, state: FSMContext):
-    """
-    Test hook: select money operation directly
-    """
-    lang = await get_user_language(cb.from_user.id)
-    await state.update_data(operation=cb.data.removeprefix("money_"))
-    text = get_message(lang, "money_amount_prompt")
-    await cb.message.edit_text(text)
-    await state.set_state(MoneyStates.waiting_for_amount)
-    await cb.answer()
+    await cb.answer(get_message(await get_user_language(cb.from_user.id), "cancelled"))
