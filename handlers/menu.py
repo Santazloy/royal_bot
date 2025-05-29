@@ -21,7 +21,7 @@ from handlers.news import cmd_show_news
 
 menu_router = Router()
 
-MENU_PHOTO_ID = "AgACAgQAAxkBAAIC0mg1lkPQDcWblay14vq1lWCK6RvsAAIoyDEbJ_eoUVnJGXuRK_BVAQADAgADeQADNgQ"
+MENU_PHOTO_ID = "AgACAgUAAyEFAASgiEpFAAMMaDifEmRyoCT31UlSUzMioMqQkRcAAuPMMRsda7hV537I3mD5jpQBAAMCAAN5AAM2BA"
 
 @menu_router.message(Command("menu"))
 async def cmd_menu(message: Message):

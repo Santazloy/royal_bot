@@ -31,7 +31,7 @@ class MoneyStates(StatesGroup):
 
 # Единое фото для всех шагов
 MONEY_PHOTO = (
-    "AgACAgUAAyEFAASVOrsCAAIDEGg23brrLiadZoeFJf_tyxhHjaDIAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
+    "AgACAgUAAyEFAASgiEpFAAMMaDifEmRyoCT31UlSUzMioMqQkRcAAuPMMRsda7hV537I3mD5jpQBAAMCAAN5AAM2BA"
 )
 
 

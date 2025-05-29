@@ -15,7 +15,7 @@ from handlers.booking.reporting import update_group_message
 logger = logging.getLogger(__name__)
 router = Router()
 
-PHOTO_ID = "AgACAgUAAxkDAAIEMmg4LTm7LDOGrTgW2WCA219ZynwrAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
+PHOTO_ID = "AgACAgUAAyEFAASgiEpFAAMMaDifEmRyoCT31UlSUzMioMqQkRcAAuPMMRsda7hV537I3mD5jpQBAAMCAAN5AAM2BA"
 
 last_bot_message: dict[int, int] = {}
 

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 # Вынесём file_id картинки, которая будет везде
-STARTEMOJI_PHOTO = "AgACAgUAAyEFAASVOrsCAAIDEGg23brrLiadZoeFJf_tyxhHjaDIAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
+STARTEMOJI_PHOTO = "AgACAgUAAyEFAASgiEpFAAMMaDifEmRyoCT31UlSUzMioMqQkRcAAuPMMRsda7hV537I3mD5jpQBAAMCAAN5AAM2BA"
 
 class EmojiStates(StatesGroup):
     waiting_for_emoji = State()
