@@ -11,8 +11,53 @@ LANGUAGES = {
     'ru': 'Русский',
     'zh': '中文',
 }
-
 TRANSLATIONS = {
+    # --- КЛЮЧИ ДЛЯ /menu (ПОЛЬЗОВАТЕЛЬСКОЕ МЕНЮ) ---
+    'menu_btn_booking': {
+        'en': 'Booking',
+        'ru': 'Бронирование',
+        'zh': '预订',
+    },
+    'menu_btn_girls': {
+        'en': 'Girls',
+        'ru': 'Девушки',
+        'zh': '女士',
+    },
+    'menu_btn_schedule': {
+        'en': 'Schedule',
+        'ru': 'Расписание',
+        'zh': '日程',
+    },
+    'menu_btn_balance': {
+        'en': 'Balance',
+        'ru': 'Баланс',
+        'zh': '余额',
+    },
+    'menu_btn_news': {
+        'en': 'News',
+        'ru': 'Новости',
+        'zh': '新闻',
+    },
+    'menu_btn_cancel_booking': {
+        'en': 'Cancel booking',
+        'ru': 'Отмена брони',
+        'zh': '取消预订',
+    },
+    'menu_no_action': {
+        'en': 'No action for this button.',
+        'ru': 'Нет действия для этой кнопки.',
+        'zh': '此按钮暂无操作。',
+    },
+    'menu_news_header': {
+        'en': 'Latest news:',
+        'ru': 'Последние новости:',
+        'zh': '最新新闻：',
+    },
+    'menu_unknown': {
+        'en': 'Unknown menu action!',
+        'ru': 'Неизвестная команда меню!',
+        'zh': '未知的菜单操作！',
+    },
     # Общие сообщения
     'no_action': {
         'en': 'Button without action.',
@@ -166,8 +211,8 @@ TRANSLATIONS = {
     'btn_girls':           {'en': '💃 Girls',        'ru': '💃 Девушки',     'zh': '💃 女士'},
     'btn_schedule':        {'en': '📋 Schedule',     'ru': '📋 Расписание',  'zh': '📋 日程'},
     'btn_balance':         {'en': '🧮 Balance',      'ru': '🧮 Баланс',      'zh': '🧮 余额'},
-    'btn_news':            {'en': '📰 News',         'ru': '📰 Новости',    'zh': '📰 新闻'},
-    'btn_cancel_booking':  {'en': '❌ Cancel booking','ru': '❌ Отмена брони','zh': '❌ 取消预订'},
+    'btn_news':            {'en': 'News',         'ru': 'Новости',    'zh': '新闻'},
+    'btn_cancel_booking':  {'en': 'Cancel booking','ru': 'Отмена брони','zh': '取消预订'},
     'btn_photo_id':        {'en': 'Photo ID',      'ru': 'Айди фото',      'zh': '图片ID'},
     'btn_group_id':        {'en': 'Group ID',      'ru': 'Айди группы',    'zh': '群组ID'},
     'btn_salary':          {'en': 'Salary',        'ru': 'Зарплата',       'zh': '工资'},

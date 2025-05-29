@@ -1,5 +1,3 @@
-# handlers/menu.py
-
 import logging
 from aiogram import Router, F
 from aiogram.types import (
@@ -23,7 +21,6 @@ from handlers.news import cmd_show_news
 
 menu_router = Router()
 
-# file_id картинки (фото) для главного меню:
 MENU_PHOTO_ID = "AgACAgQAAxkBAAIC0mg1lkPQDcWblay14vq1lWCK6RvsAAIoyDEbJ_eoUVnJGXuRK_BVAQADAgADeQADNgQ"
 
 @menu_router.message(Command("menu"))
@@ -34,16 +31,16 @@ async def cmd_menu(message: Message):
     try:
         await safe_answer(message, photo=MENU_PHOTO_ID, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text=get_message(lang, "btn_booking"),    callback_data="menu_stub|booking"),
-                InlineKeyboardButton(text=get_message(lang, "btn_girls"),      callback_data="menu_stub|girls"),
+                InlineKeyboardButton(text=get_message(lang, "menu_btn_booking"),    callback_data="menu_stub|booking"),
+                InlineKeyboardButton(text=get_message(lang, "menu_btn_girls"),      callback_data="menu_stub|girls"),
             ],
             [
-                InlineKeyboardButton(text=get_message(lang, "btn_schedule"),   callback_data="view_all_bookings"),
-                InlineKeyboardButton(text=get_message(lang, "btn_balance"),    callback_data="menu_stub|balance"),
+                InlineKeyboardButton(text=get_message(lang, "menu_btn_schedule"),   callback_data="view_all_bookings"),
+                InlineKeyboardButton(text=get_message(lang, "menu_btn_balance"),    callback_data="menu_stub|balance"),
             ],
             [
-                InlineKeyboardButton(text=get_message(lang, "btn_news"),       callback_data="menu_stub|news"),
-                InlineKeyboardButton(text=get_message(lang, "btn_cancel_booking"), callback_data="menu_stub|cancel_booking"),
+                InlineKeyboardButton(text=get_message(lang, "menu_btn_news"),       callback_data="menu_stub|news"),
+                InlineKeyboardButton(text=get_message(lang, "menu_btn_cancel_booking"), callback_data="menu_stub|cancel_booking"),
             ],
         ]))
     except Exception as e:
@@ -75,10 +72,10 @@ async def on_menu_stub(callback: CallbackQuery, state: FSMContext):
         await state.set_state(BookUserStates.waiting_for_group)
 
     elif action == "girls":
-        await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "no_action"))
+        await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_no_action"))
 
     elif action == "news":
-        header = get_message(lang, "news_header")
+        header = get_message(lang, "menu_news_header")
         try:
             await callback.message.delete()
         except:
@@ -87,10 +84,10 @@ async def on_menu_stub(callback: CallbackQuery, state: FSMContext):
         await cmd_show_news(callback.message)
 
     elif action == "balance":
-        await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "no_action"))
+        await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_no_action"))
 
     elif action == "cancel_booking":
-        await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "no_action"))
+        await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_no_action"))
 
     else:
         await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_unknown"))
