@@ -1,5 +1,3 @@
-# tests/test_main.py
-
 import pytest
 from unittest.mock import AsyncMock, patch
 

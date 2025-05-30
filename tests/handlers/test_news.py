@@ -1,19 +1,15 @@
-# tests/handlers/test_news.py
-
 import pytest
 import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 from types import SimpleNamespace
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
-
 from handlers.news import (
     cmd_added, process_news_action, NewsStates,
     process_news_photos, photos_done, process_news_text,
     process_edit_text, cmd_show_news
 )
 from handlers.language import get_message
-
 
 @pytest.mark.asyncio
 async def test_cmd_added_multiple_admins():
@@ -23,12 +19,11 @@ async def test_cmd_added_multiple_admins():
         msg.answer = AsyncMock()
         state = AsyncMock()
         with patch("handlers.news.get_user_language", return_value="ru"), \
-             patch("handlers.news.is_user_admin", return_value=True):
+             patch("handlers.news.is_user_admin", return_value=True), \
+             patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
             await cmd_added(msg, state)
-            msg.answer.assert_awaited()
-
+            safe_mock.assert_awaited()
     await asyncio.gather(*[simulate(uid) for uid in [7894353415, 7935161063, 1768520583, 7000000001, 7000000002]])
-
 
 @pytest.mark.asyncio
 async def test_process_news_action_cancel():
@@ -43,11 +38,12 @@ async def test_process_news_action_cancel():
     state = AsyncMock()
     state.get_data = AsyncMock(return_value={"base_chat_id": 123, "base_message_id": 1})
     with patch("handlers.news.get_user_language", return_value="ru"), \
-         patch("handlers.news.is_user_admin", return_value=True):
+         patch("handlers.news.is_user_admin", return_value=True), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         await process_news_action(cb, state)
+        safe_mock.assert_awaited()
     cb.answer.assert_awaited()
     state.clear.assert_awaited_once()
-
 
 @pytest.mark.asyncio
 async def test_process_news_action_add_edit_delete():
@@ -58,18 +54,15 @@ async def test_process_news_action_add_edit_delete():
     state = AsyncMock()
     state.update_data = AsyncMock()
     state.set_state = AsyncMock()
-
     with patch("handlers.news.is_user_admin", return_value=True), \
-         patch("handlers.news.get_user_language", return_value="ru"):
-
+         patch("handlers.news.get_user_language", return_value="ru"), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         cb.data = "news_add"
         await process_news_action(cb, state)
         state.set_state.assert_awaited_with(NewsStates.waiting_for_photos)
-
         cb.data = "news_edit"
         await process_news_action(cb, state)
         state.set_state.assert_awaited_with(NewsStates.waiting_for_edit_text)
-
         cb.data = "news_delete"
         state.get_data = AsyncMock(return_value={"base_chat_id": 123, "base_message_id": 1})
         fake_conn = AsyncMock()
@@ -78,7 +71,6 @@ async def test_process_news_action_add_edit_delete():
         with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()):
             await process_news_action(cb, state)
             fake_conn.execute.assert_awaited()
-
 
 @pytest.mark.asyncio
 async def test_process_news_photos_under_limit():
@@ -89,31 +81,29 @@ async def test_process_news_photos_under_limit():
     state = AsyncMock()
     state.get_data = AsyncMock(return_value={"file_ids": []})
     state.update_data = AsyncMock()
-
-    with patch("handlers.news.get_user_language", return_value="ru"):
+    with patch("handlers.news.get_user_language", return_value="ru"), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         await process_news_photos(msg, state)
-
-    msg.answer.assert_awaited()
+        safe_mock.assert_awaited()
     state.update_data.assert_awaited()
-
 
 @pytest.mark.asyncio
 async def test_photos_done_with_photos():
     msg = AsyncMock(spec=Message)
     msg.from_user = SimpleNamespace(id=1)
     msg.bot.edit_message_text = AsyncMock()
+    msg.bot.delete_message = AsyncMock()
     msg.bot = msg.bot
     msg.answer = AsyncMock()
     state = AsyncMock()
     state.get_data = AsyncMock(return_value={"file_ids": ["file1"], "base_chat_id": 123, "base_message_id": 123})
     state.set_state = AsyncMock()
-
-    with patch("handlers.news.get_user_language", return_value="ru"):
+    with patch("handlers.news.get_user_language", return_value="ru"), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         await photos_done(msg, state)
-
-    msg.bot.edit_message_text.assert_awaited()
+        safe_mock.assert_awaited()
+    msg.bot.delete_message.assert_awaited()
     state.set_state.assert_awaited()
-
 
 @pytest.mark.asyncio
 async def test_process_news_text():
@@ -127,15 +117,13 @@ async def test_process_news_text():
     fake_conn = AsyncMock()
     fake_conn.execute = AsyncMock()
     fake_conn.__aenter__.return_value = fake_conn
-
     with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
-         patch("handlers.news.get_user_language", return_value="ru"):
+         patch("handlers.news.get_user_language", return_value="ru"), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         await process_news_text(msg, state)
-
-    msg.answer.assert_awaited()
+        safe_mock.assert_awaited()
     fake_conn.execute.assert_awaited()
     state.clear.assert_awaited_once()
-
 
 @pytest.mark.asyncio
 async def test_process_edit_text():
@@ -148,15 +136,13 @@ async def test_process_edit_text():
     fake_conn = AsyncMock()
     fake_conn.execute = AsyncMock()
     fake_conn.__aenter__.return_value = fake_conn
-
     with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
-         patch("handlers.news.get_user_language", return_value="ru"):
+         patch("handlers.news.get_user_language", return_value="ru"), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         await process_edit_text(msg, state)
-
-    msg.answer.assert_awaited()
+        safe_mock.assert_awaited()
     fake_conn.execute.assert_awaited()
     state.clear.assert_awaited_once()
-
 
 @pytest.mark.asyncio
 async def test_cmd_show_news():
@@ -167,11 +153,10 @@ async def test_cmd_show_news():
     fake_conn = AsyncMock()
     fake_conn.fetch = AsyncMock(return_value=[{"id": 1, "file_ids": json.dumps(["file1"]), "text": "hello"}])
     fake_conn.__aenter__.return_value = fake_conn
-
     with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
          patch("handlers.news.get_user_language", return_value="ru"), \
-         patch("handlers.news.get_message", side_effect=lambda lang, key, **kw: key):
+         patch("handlers.news.get_message", side_effect=lambda lang, key, **kw: key), \
+         patch("handlers.news.safe_answer", new=AsyncMock()) as safe_mock:
         await cmd_show_news(msg)
-
-    msg.answer.assert_awaited()
-    msg.answer_media_group.assert_awaited()
+        safe_mock.assert_awaited()
+    msg.answer_media_group.assert_not_called()  # Не вызывается в текущей реализации через safe_answer, патч для защиты

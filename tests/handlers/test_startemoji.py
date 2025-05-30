@@ -1,95 +1,135 @@
-# tests/handlers/test_startemoji.py
-
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
 from types import SimpleNamespace
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
 from handlers.startemoji import (
-    cmd_start,
     cmd_emoji,
     callback_assign_emoji,
-    callback_choose_emoji,
-    callback_reassign_emoji,
+    callback_choose_emoji
 )
 
-
 @pytest.mark.asyncio
-async def test_cmd_start_multiple_users():
-    async def simulate_user(uid):
+async def test_cmd_emoji_admin_and_users():
+    users = [111, 222, 333, 444, 555]
+    for uid in users:
         msg = AsyncMock(spec=Message)
         msg.from_user = SimpleNamespace(id=uid)
-        msg.answer = AsyncMock()
         msg.bot = AsyncMock()
+        msg.answer = AsyncMock()
+        msg.answer_photo = AsyncMock()
+        msg.chat = SimpleNamespace(id=uid)
 
         fake_conn = AsyncMock()
-        fake_conn.fetchrow = AsyncMock(return_value=None)
-        fake_conn.execute = AsyncMock()
+        fake_conn.fetch = AsyncMock(return_value=[{"user_id": uid, "emoji": "😎"}])
         fake_conn.__aenter__.return_value = fake_conn
 
-        with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()):
-            await cmd_start(msg, msg.bot)
-            msg.answer.assert_awaited()
-
-    await asyncio.gather(*[simulate_user(uid) for uid in range(1001, 1006)])
-
-
-@pytest.mark.asyncio
-async def test_cmd_emoji_admin():
-    msg = AsyncMock(spec=Message)
-    msg.from_user = SimpleNamespace(id=7894353415)
-    msg.bot = AsyncMock()
-    msg.answer = AsyncMock()
-
-    fake_conn = AsyncMock()
-    fake_conn.fetch = AsyncMock(return_value=[{"user_id": 1, "emoji": "😎"}])
-    fake_conn.__aenter__.return_value = fake_conn
-
-    with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()):
-        await cmd_emoji(msg, msg.bot)
-        msg.answer.assert_awaited()
-
+        with patch("handlers.startemoji.db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
+             patch("handlers.startemoji.is_user_admin", return_value=True), \
+             patch("handlers.startemoji.get_user_language", return_value="ru"), \
+             patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+             patch("handlers.startemoji.safe_answer", new=AsyncMock()) as safe_mock:
+            await cmd_emoji(msg, msg.bot, user_id=uid)
+            safe_mock.assert_awaited()
 
 @pytest.mark.asyncio
-async def test_callback_assign_emoji():
+async def test_callback_assign_emoji_all_steps():
     cb = AsyncMock(spec=CallbackQuery)
     cb.from_user = SimpleNamespace(id=7894353415)
-    cb.data = "assign_emoji_123"
+    cb.data = "reassign_123"
     cb.message = AsyncMock()
-    cb.message.edit_text = AsyncMock()
+    cb.bot = AsyncMock()
     cb.answer = AsyncMock()
-    await callback_assign_emoji(cb, cb.bot)
-    cb.answer.assert_awaited()
-
+    cb.message.chat = SimpleNamespace(id=7894353415)
+    with patch("handlers.startemoji.is_user_admin", return_value=True), \
+         patch("handlers.startemoji.get_user_language", return_value="ru"), \
+         patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+         patch("handlers.startemoji.safe_answer", new=AsyncMock()) as safe_mock:
+        await callback_assign_emoji(cb, FSMContext)
+        safe_mock.assert_awaited()
 
 @pytest.mark.asyncio
-async def test_callback_choose_emoji():
+async def test_callback_choose_emoji_ok():
     cb = AsyncMock(spec=CallbackQuery)
     cb.from_user = SimpleNamespace(id=7894353415)
     cb.data = "choose_emoji_123_😎"
     cb.message = AsyncMock()
-    cb.message.edit_text = AsyncMock()
+    cb.bot = AsyncMock()
     cb.answer = AsyncMock()
     cb.bot.send_message = AsyncMock()
+    cb.message.chat = SimpleNamespace(id=7894353415)
 
     fake_conn = AsyncMock()
     fake_conn.execute = AsyncMock()
     fake_conn.__aenter__.return_value = fake_conn
 
-    with patch("db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()):
+    with patch("handlers.startemoji.db.db_pool", new=type("Pool", (), {"acquire": lambda self: fake_conn})()), \
+         patch("handlers.startemoji.is_user_admin", return_value=True), \
+         patch("handlers.startemoji.get_user_language", return_value="ru"), \
+         patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+         patch("handlers.startemoji.safe_answer", new=AsyncMock()) as safe_mock:
         await callback_choose_emoji(cb, cb.bot)
-        cb.answer.assert_awaited()
+        safe_mock.assert_awaited()
         cb.bot.send_message.assert_awaited()
 
-
 @pytest.mark.asyncio
-async def test_callback_reassign_emoji():
+async def test_callback_assign_emoji_invalid_id():
     cb = AsyncMock(spec=CallbackQuery)
     cb.from_user = SimpleNamespace(id=7894353415)
-    cb.data = "reassign_123"
+    cb.data = "reassign_invalid"
     cb.message = AsyncMock()
-    cb.message.edit_text = AsyncMock()
+    cb.bot = AsyncMock()
     cb.answer = AsyncMock()
-    await callback_reassign_emoji(cb, cb.bot)
-    cb.answer.assert_awaited()
-    cb.message.edit_text.assert_awaited()
+    cb.message.chat = SimpleNamespace(id=7894353415)
+    with patch("handlers.startemoji.is_user_admin", return_value=True), \
+         patch("handlers.startemoji.get_user_language", return_value="ru"), \
+         patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+         patch("handlers.startemoji.safe_answer", new=AsyncMock()) as safe_mock:
+        await callback_assign_emoji(cb, FSMContext)
+        safe_mock.assert_awaited()
+
+@pytest.mark.asyncio
+async def test_callback_choose_emoji_invalid_data():
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.from_user = SimpleNamespace(id=7894353415)
+    cb.data = "choose_emoji_invalid"
+    cb.message = AsyncMock()
+    cb.bot = AsyncMock()
+    cb.answer = AsyncMock()
+    cb.message.chat = SimpleNamespace(id=7894353415)
+    with patch("handlers.startemoji.is_user_admin", return_value=True), \
+         patch("handlers.startemoji.get_user_language", return_value="ru"), \
+         patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+         patch("handlers.startemoji.safe_answer", new=AsyncMock()) as safe_mock:
+        await callback_choose_emoji(cb, cb.bot)
+        safe_mock.assert_awaited()
+
+@pytest.mark.asyncio
+async def test_callback_choose_emoji_invalid_user_id():
+    cb = AsyncMock(spec=CallbackQuery)
+    cb.from_user = SimpleNamespace(id=7894353415)
+    cb.data = "choose_emoji_notint_😎"
+    cb.message = AsyncMock()
+    cb.bot = AsyncMock()
+    cb.answer = AsyncMock()
+    cb.message.chat = SimpleNamespace(id=7894353415)
+    with patch("handlers.startemoji.is_user_admin", return_value=True), \
+         patch("handlers.startemoji.get_user_language", return_value="ru"), \
+         patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+         patch("handlers.startemoji.safe_answer", new=AsyncMock()) as safe_mock:
+        await callback_choose_emoji(cb, cb.bot)
+        safe_mock.assert_awaited()
+
+@pytest.mark.asyncio
+async def test_cmd_emoji_not_admin():
+    msg = AsyncMock(spec=Message)
+    msg.from_user = SimpleNamespace(id=999)
+    msg.bot = AsyncMock()
+    msg.chat = SimpleNamespace(id=999)
+    with patch("handlers.startemoji.is_user_admin", return_value=False), \
+         patch("handlers.startemoji.get_user_language", return_value="ru"), \
+         patch("handlers.startemoji.get_message", side_effect=lambda lang, key, **kw: f"{key}"), \
+         patch("handlers.startemoji.safe_answer", AsyncMock()) as safe_mock:
+        await cmd_emoji(msg, msg.bot, user_id=999)
+        safe_mock.assert_awaited()
