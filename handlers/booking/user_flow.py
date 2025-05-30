@@ -110,8 +110,8 @@ async def user_select_time(cb: CallbackQuery, state: FSMContext):
     gk, day, uid = data["selected_group"], data["selected_day"], cb.from_user.id
 
     data_mgr.book_slot(gk, day, slot, uid)
-    iso = get_slot_datetime_shanghai(day, slot)
-    await repo.add_booking(gk, day, slot, uid, iso)
+    dt = get_slot_datetime_shanghai(day, slot)  # теперь datetime, а не строка
+    await repo.add_booking(gk, day, slot, uid, dt)
 
     await send_booking_report(cb.bot, uid, gk, slot, day)
     await state.clear()

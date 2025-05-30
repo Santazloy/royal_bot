@@ -58,7 +58,7 @@ class BookingRepo:
     async def add_booking(
         self, group_key: str, day: str,
         time_slot: str, user_id: int,
-        start_time: str
+        start_time  # объект datetime, не строка!
     ) -> None:
         pool = db.db_pool or self.pool
         async with pool.acquire() as conn:

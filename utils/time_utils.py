@@ -26,10 +26,10 @@ def get_adjacent_time_slots(slot: str) -> List[str]:
         neighbours.append(slots[i+1])
     return neighbours
 
-def get_slot_datetime_shanghai(day: str, slot: str) -> str:
+def get_slot_datetime_shanghai(day: str, slot: str) -> datetime:
     now = datetime.now(SLOT_TZ)
     if day.lower() == "завтра":
         now += timedelta(days=1)
     hh, mm = slot.split(":")
     dt = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
-    return dt.isoformat()
+    return dt

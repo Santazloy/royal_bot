@@ -20,25 +20,19 @@ from utils.bot_utils import safe_answer  # единая функция отпр�
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Вынесём file_id картинки, которая будет везде
 STARTEMOJI_PHOTO = "photo/IMG_2585.JPG"
 
 class EmojiStates(StatesGroup):
     waiting_for_emoji = State()
 
-# Список доступных эмодзи
 AVAILABLE_EMOJIS = [
     "😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇",
     "😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛",
     "😝","😜","🤪","🤨","🧐","🤓","😎","🥳","😏","😶",
-    # … добавить остальные по необходимости
 ]
 
 @router.message(Command("emoji"))
 async def cmd_emoji(message: Message, bot: Bot, user_id: int = None):
-    """
-    Админ вызывает /emoji — бот присылает меню выбора пользователя.
-    """
     user_id = user_id or message.from_user.id
     lang = await get_user_language(user_id)
 
@@ -56,18 +50,14 @@ async def cmd_emoji(message: Message, bot: Bot, user_id: int = None):
             caption="DB pool not initialized!"
         )
 
-    # Считываем всех пользователей и их эмодзи
+    # Получаем всех пользователей, включая админа (его user_id)
     async with db.db_pool.acquire() as conn:
         rows = await conn.fetch("SELECT user_id, emoji FROM user_emojis ORDER BY user_id")
+        user_ids = {r['user_id'] for r in rows}
+        if user_id not in user_ids:
+            rows.append({'user_id': user_id, 'emoji': None})
 
-    if not rows:
-        return await safe_answer(
-            message,
-            photo=STARTEMOJI_PHOTO,
-            caption="Нет пользователей для назначения эмоджи."
-        )
-
-    # Строим клавиатуру: одна кнопка на пользователя
+    # Теперь rows всегда содержит админа
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -78,7 +68,6 @@ async def cmd_emoji(message: Message, bot: Bot, user_id: int = None):
         for r in rows
     ])
 
-    # Отправляем меню с фото
     await safe_answer(
         message,
         photo=STARTEMOJI_PHOTO,
@@ -88,17 +77,11 @@ async def cmd_emoji(message: Message, bot: Bot, user_id: int = None):
 
 @router.callback_query(F.data == "emoji")
 async def emoji_via_button(cb: CallbackQuery, state: FSMContext, bot: Bot):
-    """
-    Тот же самый /emoji, но вызван из админ-меню кнопкой.
-    """
     await cmd_emoji(cb.message, bot, user_id=cb.from_user.id)
     await cb.answer()
 
 @router.callback_query(F.data.startswith("reassign_"))
 async def callback_assign_emoji(callback: CallbackQuery, state: FSMContext):
-    """
-    Админ нажал на ID=user — показываем клавиатуру с эмодзи.
-    """
     lang = await get_user_language(callback.from_user.id)
     if not is_user_admin(callback.from_user.id):
         return await safe_answer(
@@ -118,7 +101,6 @@ async def callback_assign_emoji(callback: CallbackQuery, state: FSMContext):
         )
     target_id = int(user_id_str)
 
-    # Строим клавиатуру 5×?
     buttons = []
     row = []
     for i, emo in enumerate(AVAILABLE_EMOJIS, start=1):
@@ -144,9 +126,6 @@ async def callback_assign_emoji(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("choose_emoji_"))
 async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
-    """
-    Админ выбрал конкретное эмоджи — сохраняем в БД и уведомляем.
-    """
     lang = await get_user_language(callback.from_user.id)
     if not is_user_admin(callback.from_user.id):
         return await safe_answer(
@@ -174,7 +153,6 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
         )
     target_id = int(uid_str)
 
-    # Обновляем БД
     async with db.db_pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO user_emojis (user_id, emoji) VALUES ($1, $2) "
@@ -188,7 +166,6 @@ async def callback_choose_emoji(callback: CallbackQuery, bot: Bot):
         caption=f"Пользователю {target_id} присвоен эмоджи: {emo}"
     )
 
-    # Уведомляем пользователя (если возможно)
     try:
         await bot.send_message(
             target_id,
