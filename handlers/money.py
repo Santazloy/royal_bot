@@ -30,9 +30,7 @@ class MoneyStates(StatesGroup):
 
 
 # Единое фото для всех шагов
-MONEY_PHOTO = (
-    "AgACAgUAAyEFAASgiEpFAAMMaDifEmRyoCT31UlSUzMioMqQkRcAAuPMMRsda7hV537I3mD5jpQBAAMCAAN5AAM2BA"
-)
+MONEY_PHOTO = "photo/IMG_2585.JPG"
 
 
 async def _send_photo(

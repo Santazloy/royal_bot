@@ -23,6 +23,7 @@ from handlers.booking.cancelbook import cmd_off_admin
 # Store the last admin menu message per chat
 last_admin_menu_message: dict[int, int] = {}
 
+PHOTO_ID = "photo/IMG_2585.JPG"
 # Emoji mapping for admin menu buttons
 EMOJI_MAP = {
     'added': '📰',
@@ -89,7 +90,7 @@ async def show_admin_menu(message: Message, state: FSMContext):
     kb = build_admin_menu_keyboard(lang)
     sent = await safe_answer(
         message,
-        photo='AgACAgUAAyEFAASgiEpFAAMMaDifEmRyoCT31UlSUzMioMqQkRcAAuPMMRsda7hV537I3mD5jpQBAAMCAAN5AAM2BA',
+        photo=PHOTO_ID,
         caption=get_message(lang, 'menu_admin_header', default='Меню администратора:'),
         reply_markup=kb
     )

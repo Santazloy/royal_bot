@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 salary_router = Router()
 
 # Uniform photo for all salary messages
-SALARY_PHOTO = (
-    "AgACAgUAAyEFAASVOrsCAAIDEGg23brrLiadZoeFJf_tyxhHjaDIAALjzDEbHWu4VZUmEXsg9M7tAQADAgADeQADNgQ"
-)
+SALARY_PHOTO = "photo/IMG_2585.JPG"
 
 
 async def load_salary_data_from_db():
