@@ -1,14 +1,13 @@
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InputFile
 from aiogram import Bot
 import os
 
-# Store the last bot-sent message per chat to allow deletion of previous messages
 last_bot_message: dict[int, int] = {}
 
 async def safe_answer(entity: Message | CallbackQuery, text: str = None, **kwargs):
     """
     Sends a message or photo, deleting the previous bot message in the chat if any.
-    If kwargs contains 'photo', supports both file_id/URL and local file path.
+    If kwargs contains 'photo', supports both file_id/URL and local file path (uses InputFile).
     """
     # Determine chat id
     if hasattr(entity, "message") and hasattr(entity.message, "chat"):
@@ -28,23 +27,15 @@ async def safe_answer(entity: Message | CallbackQuery, text: str = None, **kwarg
     if "photo" in kwargs:
         photo = kwargs.pop("photo")
         caption = kwargs.pop("caption", text)
-        # Если photo - это путь к локальному файлу
+        # Если photo - это путь к локальному файлу, используем InputFile
         if isinstance(photo, str) and os.path.exists(photo):
-            with open(photo, "rb") as img:
-                sent = await entity.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=img,
-                    caption=caption,
-                    **kwargs
-                )
-        else:
-            # file_id или URL
-            sent = await entity.bot.send_photo(
-                chat_id=chat_id,
-                photo=photo,
-                caption=caption,
-                **kwargs
-            )
+            photo = InputFile(photo)
+        sent = await entity.bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=caption,
+            **kwargs
+        )
     else:
         # Standard text message
         if hasattr(entity, "message") and hasattr(entity.message, "answer"):
