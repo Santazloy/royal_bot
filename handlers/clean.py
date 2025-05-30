@@ -1,6 +1,14 @@
+# handlers/clean.py
 import logging
+import os                                  # ← добавлено
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
+from aiogram.types.input_file import FSInputFile   # ← добавлено
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -16,45 +24,55 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 PHOTO_ID = "photo/IMG_2585.JPG"
-
 last_bot_message: dict[int, int] = {}
 
-async def safe_answer(entity, text: str = None, **kwargs):
-    # Determine chat id
-    if hasattr(entity, 'message') and hasattr(entity.message, 'chat'):
-        chat_id = entity.message.chat.id
-    else:
-        chat_id = entity.chat.id
 
-    # Delete previous bot message if exists
+async def safe_answer(entity, text: str | None = None, **kwargs):
+    """
+    Унифицированный ответ для сценария «Clean».
+    Всегда удаляем предыдущую карточку-меню и отправляем новую с картинкой.
+    """
+    # ── 1. кому отвечаем
+    if hasattr(entity, "message") and hasattr(entity.message, "chat"):
+        chat_id = entity.message.chat.id
+        bot = entity.message.bot
+    else:                                      # CallbackQuery
+        chat_id = entity.chat.id
+        bot = entity.bot
+
+    # ── 2. удалить предыдущее меню-сообщение (если есть)
     prev = last_bot_message.get(chat_id)
     if prev:
         try:
-            await entity.bot.delete_message(chat_id=chat_id, message_id=prev)
-        except:
+            await bot.delete_message(chat_id, prev)
+        except TelegramBadRequest:
             pass
 
-    # Send new message always with photo
-    if 'reply_markup' in kwargs:
-        reply_markup = kwargs['reply_markup']
-    else:
-        reply_markup = None
+    # ── 3. подготовить фото-параметр
+    photo: str | FSInputFile = PHOTO_ID
+    if isinstance(photo, str) and os.path.exists(photo):      # ★ фикс
+        photo = FSInputFile(photo)
 
-    sent = None
-    if text is None:
-        text = ""
-    if hasattr(entity, 'message') and hasattr(entity.message, 'answer_photo'):
-        sent = await entity.message.answer_photo(photo=PHOTO_ID, caption=text, reply_markup=reply_markup, parse_mode="HTML")
-    else:
-        sent = await entity.answer_photo(photo=PHOTO_ID, caption=text, reply_markup=reply_markup, parse_mode="HTML")
+    caption = text or kwargs.get("caption") or ""
+    reply_markup = kwargs.get("reply_markup")
 
+    # ── 4. отправить новое меню
+    sent = await bot.send_photo(
+        chat_id,
+        photo=photo,
+        caption=caption,
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+    )
     last_bot_message[chat_id] = sent.message_id
     return sent
+
 
 class CleanupStates(StatesGroup):
     waiting_for_main_menu    = State()
     waiting_for_group_choice = State()
     waiting_for_confirmation = State()
+
 
 @router.message(Command("clean"))
 @router.callback_query(F.data == "clean")

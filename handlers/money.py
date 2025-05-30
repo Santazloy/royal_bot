@@ -1,5 +1,6 @@
+# handlers/money.py
 import logging
-
+import os                                  # ← добавлено
 from aiogram import Router, F
 from aiogram.types import (
     Message,
@@ -7,15 +8,19 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+from aiogram.types.input_file import FSInputFile   # ← добавлено
 from aiogram.filters.command import Command
-from aiogram.filters.state import StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.filters.state import StateFilter
 from aiogram.fsm.state import State, StatesGroup
 
 import db
 from config import is_user_admin
 from constants.booking_const import groups_data
-from handlers.booking.reporting import update_group_message, send_financial_report
+from handlers.booking.reporting import (
+    update_group_message,
+    send_financial_report,
+)
 from handlers.language import get_user_language, get_message
 
 logger = logging.getLogger(__name__)
@@ -23,13 +28,12 @@ money_router = Router()
 
 
 class MoneyStates(StatesGroup):
-    waiting_for_type = State()
+    waiting_for_type         = State()
     waiting_for_group_choice = State()
-    waiting_for_operation = State()
-    waiting_for_amount = State()
+    waiting_for_operation    = State()
+    waiting_for_amount       = State()
 
 
-# Единое фото для всех шагов
 MONEY_PHOTO = "photo/IMG_2585.JPG"
 
 
@@ -40,31 +44,34 @@ async def _send_photo(
     parse_mode: str | None = None,
 ):
     """
-    Удаляет предыдущее бот-сообщение (если есть), потом отправляет фото с подписью.
+    Хелпер: удаляет старую карточку-меню и шлёт новую
+    (используется на каждом шаге FSM «Money»).
     """
-    # Определяем, у кого удалять и кому отвечать
+    # ── адресат
     if isinstance(entry, CallbackQuery):
         target = entry.message
-        await entry.answer()  # закрываем спиннер
+        await entry.answer()
     else:
         target = entry
 
-    # Пробуем удалить старое
+    # ── удалить предыдущую карточку
     try:
         await target.delete()
     except Exception:
         pass
 
-    # Формируем параметры для answer_photo
-    params: dict = {"photo": MONEY_PHOTO, "caption": caption}
+    # ── подготовить фото-параметр
+    photo: str | FSInputFile = MONEY_PHOTO
+    if isinstance(photo, str) and os.path.exists(photo):      # ★ фикс
+        photo = FSInputFile(photo)
+
+    params: dict = {"photo": photo, "caption": caption}
     if reply_markup:
         params["reply_markup"] = reply_markup
     if parse_mode:
         params["parse_mode"] = parse_mode
 
-    # Отправляем новое фото
     await target.answer_photo(**params)
-
 
 @money_router.message(Command("money"))
 async def money_command(message: Message, state: FSMContext):

@@ -8,7 +8,6 @@ import db
 
 # Импорт роутеров
 from handlers.group_id import router as group_id_router
-from handlers.news import router as news_router
 from handlers.idphoto import router as idphoto_router
 from handlers.startemoji import router as startemoji_router
 from handlers.booking.router import router as booking_router
@@ -18,7 +17,7 @@ from handlers.clean import router as clean_router
 from handlers.language import language_router
 from handlers.money import money_router
 from handlers.menu_ad import menu_ad_router
-
+from handlers.leonard import leonard_menu_router
 # ВАЖНО! Только импорт!
 from handlers.ai import router as ai_router
 from db_access.booking_repo import BookingRepo
@@ -61,12 +60,12 @@ async def main():
     logger.debug("Подключение роутеров...")
     dp.include_router(language_router)
     dp.include_router(group_id_router)
-    dp.include_router(news_router)
     dp.include_router(idphoto_router)
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
     dp.include_router(salary_router)
     dp.include_router(ai_router)
+    dp.include_router(leonard_menu_router)
     dp.include_router(clean_router)
     dp.include_router(money_router)
     dp.include_router(menu_ad_router)
@@ -78,7 +77,6 @@ async def main():
     commands = [
         BotCommand(command="/start", description="Начать"),
         BotCommand(command="/help", description="Помощь"),
-        BotCommand(command="/added", description="Управление новостями"),
         BotCommand(command="/news", description="Показать новости"),
         BotCommand(command="/id", description="Получить file_id фото"),
         BotCommand(command="/emoji", description="Смена эмоджи (только для админа)"),
