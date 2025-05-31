@@ -1,5 +1,3 @@
-# handlers/booking/admin_flow.py
-
 from aiogram import F
 from aiogram.types import CallbackQuery
 from aiogram.enums import ParseMode
@@ -12,6 +10,8 @@ from utils.bot_utils import safe_answer
 from aiogram import Router
 router = Router()
 
+PHOTO_ID = "photo/IMG_2585.JPG"
+
 @router.callback_query(F.data.startswith("group_time|"))
 async def admin_click_slot(cb: CallbackQuery):
     _, gk, day, slot = cb.data.split("|")
@@ -23,35 +23,39 @@ async def admin_click_slot(cb: CallbackQuery):
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Только админ!", show_alert=True)
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text=emoji,
-                callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
-            )
-            for code, emoji in status_mapping.items()
-        ],
-        [
-            InlineKeyboardButton(
-                text="❌❌❌ Отменить",
-                callback_data=f"group_status|{gk}|{day}|{slot}|-1"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="« Назад",
-                callback_data=f"group_status|{gk}|{day}|{slot}|back"
-            )
-        ]
-    ])
+    # Удалить прошлое сообщение (если возможно)
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
+
+    # Красивые кнопки статуса: две строки, например 3+2 (или сколько есть)
+    codes = list(status_mapping.items())
+    status_buttons = [
+        [InlineKeyboardButton(
+            text=emoji,
+            callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
+        ) for code, emoji in codes[:3]],
+        [InlineKeyboardButton(
+            text=emoji,
+            callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
+        ) for code, emoji in codes[3:]],
+        [InlineKeyboardButton(
+            text="« Назад",
+            callback_data=f"group_status|{gk}|{day}|{slot}|back"
+        )]
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=status_buttons)
 
     await safe_answer(
         cb,
         "<b>Выберите финальный статус слота:</b>",
         parse_mode=ParseMode.HTML,
-        reply_markup=kb
+        reply_markup=kb,
+        photo=PHOTO_ID
     )
     await cb.answer()
+
 
 @router.callback_query(F.data.startswith("group_status|"))
 async def admin_click_status(cb: CallbackQuery):
@@ -64,6 +68,12 @@ async def admin_click_status(cb: CallbackQuery):
     member = await cb.bot.get_chat_member(cb.message.chat.id, cb.from_user.id)
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Нет прав!", show_alert=True)
+
+    # Удалить прошлое сообщение (если возможно)
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
 
     if code == "back":
         await update_group_message(cb.bot, gk)
@@ -103,7 +113,7 @@ async def admin_click_status(cb: CallbackQuery):
             logger.error(f"DB error on delete: {e}")
 
         await update_group_message(cb.bot, gk)
-        return await safe_answer(cb, "Слот отменён.")
+        return await safe_answer(cb, "Слот отменён.", photo=PHOTO_ID)
 
     # Устанавливаем финальный статус
     emoji = status_mapping.get(code)
@@ -131,15 +141,14 @@ async def admin_click_status(cb: CallbackQuery):
     except Exception as e:
         logger.error(f"DB error: {e}")
 
-    # Предлагаем способ оплаты
+    # Предлагаем способ оплаты, все кнопки — в своих строках
     from handlers.booking.rewards import apply_special_user_reward
     await apply_special_user_reward(code, cb.bot)
 
-    from aiogram.types import InlineKeyboardMarkup as _IKM, InlineKeyboardButton as _IKB
-    pay_kb = _IKM(inline_keyboard=[[
-        _IKB(text="наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"),
-        _IKB(text="безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"),
-        _IKB(text="агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent"),
-    ]])
-    await safe_answer(cb, "Выберите способ оплаты:", parse_mode=ParseMode.HTML, reply_markup=pay_kb)
+    pay_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash")],
+        [InlineKeyboardButton(text="безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal")],
+        [InlineKeyboardButton(text="агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent")],
+    ])
+    await safe_answer(cb, "Выберите способ оплаты:", parse_mode=ParseMode.HTML, reply_markup=pay_kb, photo=PHOTO_ID)
     await cb.answer()
