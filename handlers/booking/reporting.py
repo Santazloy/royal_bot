@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 import logging, html
 from handlers.language import get_user_language, get_message
 import db
@@ -16,7 +16,8 @@ from constants.booking_const import (
 )
 from utils.text_utils import format_html_pre
 from utils.time_utils import generate_daily_time_slots as generate_time_slots
-from handlers.booking.router import router
+from aiogram import Router
+router = Router()
 
 logger = logging.getLogger(__name__)
 

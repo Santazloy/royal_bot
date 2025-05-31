@@ -6,10 +6,11 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
 
-from handlers.booking.router import router
 from constants.booking_const import status_mapping, groups_data
 from handlers.booking.reporting import update_group_message
 from utils.bot_utils import safe_answer
+from aiogram import Router
+router = Router()
 
 @router.callback_query(F.data.startswith("group_time|"))
 async def admin_click_slot(cb: CallbackQuery):

@@ -1,4 +1,5 @@
 # handlers/menu.py
+
 import logging
 from aiogram import Router, F
 from aiogram.types import (
@@ -12,11 +13,12 @@ from utils.bot_utils import safe_answer
 from constants.booking_const import GROUP_CHOICE_IMG, groups_data
 from app_states import BookUserStates
 from handlers.language import get_user_language, get_message
-from handlers.booking.cancelbook import cmd_off     # ← подключаем /off
+from handlers.booking.cancelbook import cmd_off  # ← подключаем /off
 
 menu_router = Router()
 
 MENU_PHOTO_ID = "photo/IMG_2585.JPG"
+
 
 # ─────────────────────────── /menu ────────────────────────────────────────────
 @menu_router.message(Command("menu"))
@@ -38,14 +40,16 @@ async def cmd_menu(message: Message):
                  InlineKeyboardButton(
                     text=get_message(lang, "menu_btn_balance"),
                     callback_data="menu_stub|balance"
-                )],
+                 )],
                 [InlineKeyboardButton(
                     text=get_message(lang, "menu_btn_cancel_booking"),
                     callback_data="menu_stub|cancel_booking"
-                )],
-            ]))
+                 )],
+            ])
+        )
     except Exception as e:
         logging.error("Не удалось отправить меню: %s", e)
+
 
 # ───────────────────   меню → «Бронирование»   ───────────────────────────────
 @menu_router.callback_query(F.data == "menu_stub|booking")
@@ -55,7 +59,8 @@ async def on_menu_stub_booking(cb: CallbackQuery, state: FSMContext):
     for i, gk in enumerate(groups_data, 1):
         buf.append(InlineKeyboardButton(text=gk, callback_data=f"bkgrp_{gk}"))
         if i % 3 == 0:
-            rows.append(buf); buf = []
+            rows.append(buf)
+            buf = []
     if buf:
         rows.append(buf)
 
@@ -71,6 +76,7 @@ async def on_menu_stub_booking(cb: CallbackQuery, state: FSMContext):
     )
     await state.set_state(BookUserStates.waiting_for_group)
 
+
 # ───────────────────   меню → «Баланс» (заглушка)  ────────────────────────────
 @menu_router.callback_query(F.data == "menu_stub|balance")
 async def on_menu_stub_balance(cb: CallbackQuery, state: FSMContext):
@@ -80,6 +86,7 @@ async def on_menu_stub_balance(cb: CallbackQuery, state: FSMContext):
         photo=MENU_PHOTO_ID,
         caption=get_message(lang, "menu_no_action")
     )
+
 
 # ───────────────────   меню → «Отмена бронирования»  ──────────────────────────
 @menu_router.callback_query(F.data == "menu_stub|cancel_booking")
@@ -94,15 +101,11 @@ async def on_menu_stub_cancel_booking(cb: CallbackQuery, state: FSMContext):
         pass
 
     await cb.answer()          # убираем «часики» на кнопке
-    await cmd_off(cb.message)  # ← запуск пользовательского сценария отмены
+    await cmd_off(cb)          # ← теперь это универсальный вызов
 
-# ─────────────────────────   Unknown / прочие   ───────────────────────────────
-@menu_router.callback_query(~(
-    (F.data == "menu_stub|booking") |
-    (F.data == "menu_stub|balance") |
-    (F.data == "menu_stub|cancel_booking") |
-    (F.data == "view_all_bookings")
-))
+
+# ─────────────────────────   обработка ненайденных menu_stub  ─────────────────────────
+@menu_router.callback_query(F.data.startswith("menu_stub|"))
 async def on_menu_stub_unknown(cb: CallbackQuery, state: FSMContext):
     lang = await get_user_language(cb.from_user.id)
     await safe_answer(

@@ -6,7 +6,6 @@ from aiogram.enums import ParseMode
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 
-from handlers.booking.router import router
 from handlers.language import get_user_language, get_message
 from utils.text_utils import format_html_pre
 from constants.booking_const import status_mapping, groups_data, distribution_variants
@@ -18,6 +17,9 @@ from utils.bot_utils import safe_answer
 
 import db
 import asyncio
+
+from aiogram import Router
+router = Router()
 
 SPECIAL_USER_IDS = {7935161063, 7281089930, 7894353415}
 
