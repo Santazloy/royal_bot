@@ -1,76 +1,112 @@
+# handlers/menu.py
 import logging
 from aiogram import Router, F
 from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardButton,
-    InlineKeyboardMarkup
+    Message, CallbackQuery,
+    InlineKeyboardButton, InlineKeyboardMarkup
 )
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 
 from utils.bot_utils import safe_answer
-from constants.booking_const import (
-    groups_data,
-    GROUP_CHOICE_IMG,
-)
+from constants.booking_const import GROUP_CHOICE_IMG, groups_data
 from app_states import BookUserStates
 from handlers.language import get_user_language, get_message
+from handlers.booking.cancelbook import cmd_off     # ← подключаем /off
 
 menu_router = Router()
 
 MENU_PHOTO_ID = "photo/IMG_2585.JPG"
 
+# ─────────────────────────── /menu ────────────────────────────────────────────
 @menu_router.message(Command("menu"))
 async def cmd_menu(message: Message):
     lang = await get_user_language(message.from_user.id)
     try:
-        await safe_answer(message, photo=MENU_PHOTO_ID, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text=get_message(lang, "menu_btn_booking"), callback_data="menu_stub|booking"),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, "menu_btn_schedule"), callback_data="view_all_bookings"),
-                InlineKeyboardButton(text=get_message(lang, "menu_btn_balance"), callback_data="menu_stub|balance"),
-            ],
-            [
-                InlineKeyboardButton(text=get_message(lang, "menu_btn_cancel_booking"), callback_data="menu_stub|cancel_booking"),
-            ],
-        ]))
+        await safe_answer(
+            message,
+            photo=MENU_PHOTO_ID,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=get_message(lang, "menu_btn_booking"),
+                    callback_data="menu_stub|booking"
+                )],
+                [InlineKeyboardButton(
+                    text=get_message(lang, "menu_btn_schedule"),
+                    callback_data="view_all_bookings"
+                ),
+                 InlineKeyboardButton(
+                    text=get_message(lang, "menu_btn_balance"),
+                    callback_data="menu_stub|balance"
+                )],
+                [InlineKeyboardButton(
+                    text=get_message(lang, "menu_btn_cancel_booking"),
+                    callback_data="menu_stub|cancel_booking"
+                )],
+            ]))
     except Exception as e:
-        logging.error(f"Не удалось отправить меню: {e}")
+        logging.error("Не удалось отправить меню: %s", e)
 
+# ───────────────────   меню → «Бронирование»   ───────────────────────────────
 @menu_router.callback_query(F.data == "menu_stub|booking")
-async def on_menu_stub_booking(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
+async def on_menu_stub_booking(cb: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(cb.from_user.id)
     rows, buf = [], []
-    for i, gk in enumerate(groups_data, start=1):
+    for i, gk in enumerate(groups_data, 1):
         buf.append(InlineKeyboardButton(text=gk, callback_data=f"bkgrp_{gk}"))
         if i % 3 == 0:
             rows.append(buf); buf = []
     if buf:
         rows.append(buf)
+
     try:
-        await callback.message.delete()
-    except:
+        await cb.message.delete()
+    except Exception:
         pass
-    await safe_answer(callback, photo=GROUP_CHOICE_IMG, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+    await safe_answer(
+        cb,
+        photo=GROUP_CHOICE_IMG,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
     await state.set_state(BookUserStates.waiting_for_group)
 
+# ───────────────────   меню → «Баланс» (заглушка)  ────────────────────────────
 @menu_router.callback_query(F.data == "menu_stub|balance")
-async def on_menu_stub_balance(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
-    await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_no_action"))
+async def on_menu_stub_balance(cb: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(cb.from_user.id)
+    await safe_answer(
+        cb,
+        photo=MENU_PHOTO_ID,
+        caption=get_message(lang, "menu_no_action")
+    )
 
+# ───────────────────   меню → «Отмена бронирования»  ──────────────────────────
 @menu_router.callback_query(F.data == "menu_stub|cancel_booking")
-async def on_menu_stub_cancel_booking(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
-    await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_no_action"))
+async def on_menu_stub_cancel_booking(cb: CallbackQuery, state: FSMContext):
+    """
+    По нажатию «Отмена бронирования» вызываем тот же сценарий,
+    что и команда /off, но через CallbackQuery.
+    """
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
 
+    await cb.answer()          # убираем «часики» на кнопке
+    await cmd_off(cb.message)  # ← запуск пользовательского сценария отмены
+
+# ─────────────────────────   Unknown / прочие   ───────────────────────────────
 @menu_router.callback_query(~(
     (F.data == "menu_stub|booking") |
     (F.data == "menu_stub|balance") |
     (F.data == "menu_stub|cancel_booking") |
     (F.data == "view_all_bookings")
 ))
-async def on_menu_stub_unknown(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
-    await safe_answer(callback, photo=MENU_PHOTO_ID, caption=get_message(lang, "menu_unknown"))
+async def on_menu_stub_unknown(cb: CallbackQuery, state: FSMContext):
+    lang = await get_user_language(cb.from_user.id)
+    await safe_answer(
+        cb,
+        photo=MENU_PHOTO_ID,
+        caption=get_message(lang, "menu_unknown")
+    )

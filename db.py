@@ -31,8 +31,10 @@ async def create_tables():
         raise RuntimeError("db_pool is None! Сначала вызовите init_db_pool().")
 
     async with db_pool.acquire() as conn:
+        # ---  bookings  ---
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS bookings (
+                id BIGSERIAL UNIQUE,                         -- ★ добавлено
                 group_key TEXT NOT NULL,
                 day TEXT NOT NULL,
                 time_slot TEXT NOT NULL,
@@ -45,6 +47,7 @@ async def create_tables():
                 PRIMARY KEY (group_key, day, time_slot, user_id)
             );
         """)
+        # 🔻 оставшиеся CREATE TABLE ... без изменений 🔻
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS group_time_slot_statuses (
                 group_key TEXT NOT NULL,
@@ -84,7 +87,16 @@ async def create_tables():
                 user_id BIGINT PRIMARY KEY,
                 language TEXT NOT NULL
             );
-
+        """)
+        # --- гарантируем наличие id, если таблица была создана раньше ---
+        await conn.execute("""
+            ALTER TABLE bookings
+            ADD COLUMN IF NOT EXISTS id BIGSERIAL UNIQUE;
+        """)
+        await conn.execute("""
+            UPDATE bookings
+            SET    id = nextval(pg_get_serial_sequence('bookings','id'))
+            WHERE  id IS NULL;
         """)
         logging.info("Все таблицы созданы или проверены.")
 
