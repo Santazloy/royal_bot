@@ -1,4 +1,5 @@
 # main.py
+
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
@@ -17,14 +18,12 @@ from handlers.clean import router as clean_router
 from handlers.language import language_router
 from handlers.money import money_router
 from handlers.menu_ad import menu_ad_router
+from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
-# ВАЖНО! Только импорт!
 from handlers.ai import router as ai_router
 from db_access.booking_repo import BookingRepo
 
-
 async def main():
-    # Подробное логирование
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -68,6 +67,7 @@ async def main():
     dp.include_router(leonard_menu_router)
     dp.include_router(clean_router)
     dp.include_router(money_router)
+    dp.include_router(users_router)
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
     logger.info("Все роутеры успешно подключены.")
@@ -86,17 +86,16 @@ async def main():
         BotCommand(command="/off", description="Отменить свою бронь"),
         BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
         BotCommand(command="/ad", description="Открыть админ-меню"),
+        BotCommand(command="/users", description="Управление пользователями"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Команды бота успешно установлены.")
 
-    # Удаляем webhook перед запуском polling
     logger.debug("Удаление webhook (если установлен)...")
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook удалён. Добавляем задержку для стабилизации соединения...")
     await asyncio.sleep(2)
 
-    # Запуск polling
     logger.info("Запуск polling для получения обновлений от Telegram...")
     try:
         await dp.start_polling(bot, skip_updates=True)
@@ -106,7 +105,6 @@ async def main():
         logger.debug("Закрытие подключения к базе данных...")
         await db.close_db_pool()
         logger.info("Подключение к базе данных закрыто. Завершение работы приложения.")
-
 
 if __name__ == "__main__":
     asyncio.run(main())
