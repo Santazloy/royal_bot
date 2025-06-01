@@ -1,3 +1,4 @@
+# utils/bot_utils.py
 from aiogram.types import Message, CallbackQuery
 from aiogram.types.input_file import FSInputFile
 import os

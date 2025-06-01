@@ -27,6 +27,7 @@ from utils.time_utils import (
     get_adjacent_time_slots,
     get_slot_datetime_shanghai,
 )
+from handlers.booking.data_manager import async_book_slot
 from app_states import BookUserStates
 from utils.bot_utils import safe_answer
 import db
@@ -165,7 +166,6 @@ async def send_time_slots(
     await callback_query.answer()
     await state.set_state(BookUserStates.waiting_for_time)
 
-
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
 async def user_select_time(cb: CallbackQuery, state: FSMContext):
     """
@@ -176,12 +176,8 @@ async def user_select_time(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     gk, day, uid = data["selected_group"], data["selected_day"], cb.from_user.id
 
-    # 1) Добавляем в in-memory
-    data_mgr.book_slot(gk, day, slot, uid)
-
-    # 2) Сохраняем в БД
-    dt = get_slot_datetime_shanghai(day, slot)
-    await repo.add_booking(gk, day, slot, uid, dt)
+    # 1+2) Бронирование с ротацией эмодзи
+    await async_book_slot(gk, day, slot, uid)
 
     # 3) Отправляем личный отчёт о брони
     await send_booking_report(cb.bot, uid, gk, slot, day)
@@ -204,7 +200,6 @@ async def user_select_time(cb: CallbackQuery, state: FSMContext):
 
     await cb.answer()
     await update_group_message(cb.bot, gk)
-
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data == "bkday_back")
 async def back_to_day_choice(cb: CallbackQuery, state: FSMContext):

@@ -1,3 +1,5 @@
+# handlers/menu_ad.py
+
 import logging
 from aiogram import Router
 from aiogram.types import Message, CallbackQuery
@@ -12,7 +14,7 @@ from states.admin_states import AdminStates
 
 from handlers.clean import cmd_clean, clean_via_button
 from handlers.salary import salary_command
-from handlers.startemoji import cmd_emoji, emoji_via_button
+from handlers.startemoji import cmd_emoji
 from handlers.money import money_command
 from handlers.booking.cancelbook import cmd_off_admin
 from handlers.leonard import leonard_menu_callback  # Новый модуль
@@ -91,7 +93,7 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     if action == 'salary':
         return await salary_command(callback.message, state)
     if action == 'emoji':
-        return await emoji_via_button(callback, state)
+        return await cmd_emoji(callback.message, callback.bot)
     if action == 'money':
         return await money_command(callback.message, state)
     if action == 'offad':

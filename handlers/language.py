@@ -342,10 +342,12 @@ async def set_user_language(user_id: int, lang: str):
             user_id, lang
         )
 
-def get_message(lang: str, key: str, **kwargs) -> str:
-    mapping = TRANSLATIONS.get(key, {})
-    text = mapping.get(lang) or mapping.get('ru') or ''
-    return text.format(**kwargs)
+def get_message(lang: str, key: str, default: str = "", **kwargs) -> str:
+    mapping = TRANSLATIONS.get(key)
+    if mapping:
+        text = mapping.get(lang) or mapping.get('ru') or mapping.get('en') or default
+        return text.format(**kwargs)
+    return default
 
 @language_router.message(Command('lang'))
 async def cmd_lang(message: Message):

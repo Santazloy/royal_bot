@@ -27,15 +27,16 @@ async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
     if db.db_pool:
         try:
             async with db.db_pool.acquire() as con:
+                # Теперь берём emoji прямо из bookings для этого слота
                 row = await con.fetchrow(
-                    "SELECT u.username, e.emoji "
-                    "FROM users u LEFT JOIN user_emojis e ON u.user_id=e.user_id "
-                    "WHERE u.user_id=$1",
-                    uid,
+                    "SELECT u.username, b.emoji "
+                    "FROM users u JOIN bookings b ON u.user_id=b.user_id "
+                    "WHERE u.user_id=$1 AND b.group_key=$2 AND b.day=$3 AND b.time_slot=$4",
+                    uid, gk, day, slot
                 )
                 if row:
                     username = row["username"] or username
-                    user_emoji = (row["emoji"] or "").split(",")[0] or user_emoji
+                    user_emoji = row["emoji"] or user_emoji
         except Exception as e:
             logger.error(e)
 
@@ -66,18 +67,7 @@ async def update_group_message(bot: Bot, group_key: str):
         "⏰ Booking report ⏰",
     ]
 
-    async def get_user_emoji(uid: int) -> str:
-        if not db.db_pool:
-            return "❓"
-        try:
-            async with db.db_pool.acquire() as con:
-                row = await con.fetchrow("SELECT emoji FROM user_emojis WHERE user_id=$1", uid)
-                if row and row["emoji"]:
-                    return row["emoji"].split(",")[0]
-        except:
-            pass
-        return "❓"
-
+    # ВАЖНО: берем эмодзи из slot_emojis (загружается из БД в in-memory)
     final_statuses = {'❌❌❌','✅','✅2','✅✅','✅✅✅'}
     for day in ("Сегодня", "Завтра"):
         lines.append(f"\n{day}:")
@@ -85,8 +75,8 @@ async def update_group_message(bot: Bot, group_key: str):
             st = ginfo["time_slot_statuses"].get((day, slot))
             if st in final_statuses:
                 uid = ginfo["slot_bookers"].get((day, slot))
-                ue = await get_user_emoji(uid)
-                lines.append(f"{slot} {st} {ue}")
+                emoji = ginfo.get("slot_emojis", {}).get((day, slot), "❓")
+                lines.append(f"{slot} {st} {emoji}")
 
     text = format_html_pre("\n".join(lines))
 
@@ -171,7 +161,6 @@ async def send_financial_report(bot: Bot):
 async def cmd_all(cb: CallbackQuery):
     lang = await get_user_language(cb.from_user.id)
 
-
     group_times = {}
     for gk, g in groups_data.items():
         for d in ("Сегодня", "Завтра"):
@@ -202,7 +191,9 @@ async def cmd_all(cb: CallbackQuery):
         ]
         for gk, td in group_times.items():
             for s in td.get(day, []):
-                lines.append(f"║ {gk:<9}║ {s:<18}║")
+                # отобразить эмодзи если есть
+                emoji = groups_data[gk].get("slot_emojis", {}).get((day, s), "❓")
+                lines.append(f"║ {gk:<9}║ {s:<18}║ {emoji}")
             lines.append("╠══════════╬════════════════════╣")
         lines[-1] = lines[-1].replace("╠", "╚", 1).replace("╣", "╝", 1)
         lines.append("")

@@ -47,7 +47,13 @@ async def create_tables():
                 PRIMARY KEY (group_key, day, time_slot, user_id)
             );
         """)
-        # 🔻 оставшиеся CREATE TABLE ... без изменений 🔻
+        # ─── ДОБАВЛЯЕМ ПОЛЕ emoji ───
+        await conn.execute("""
+            ALTER TABLE bookings
+            ADD COLUMN IF NOT EXISTS emoji TEXT DEFAULT '';
+        """)
+        # ────────────────────────────
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS group_time_slot_statuses (
                 group_key TEXT NOT NULL,
