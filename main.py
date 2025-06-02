@@ -20,8 +20,9 @@ from handlers.money import money_router
 from handlers.menu_ad import menu_ad_router
 from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
-from handlers.ai import router as ai_router
 from handlers.file import router as file_router
+#from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
+from handlers.ai import router as ai_router
 from db_access.booking_repo import BookingRepo
 
 async def main():
@@ -56,7 +57,10 @@ async def main():
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     dp = Dispatcher()
 
-    # Подключение маршрутизаторов
+    # Регистрация on_startup для GPT
+    #dp.startup.register(gpt_on_startup)
+
+    # Подключение роутеров
     logger.debug("Подключение роутеров...")
     dp.include_router(language_router)
     dp.include_router(group_id_router)
@@ -64,14 +68,15 @@ async def main():
     dp.include_router(startemoji_router)
     dp.include_router(booking_router)
     dp.include_router(salary_router)
-    dp.include_router(ai_router)
     dp.include_router(leonard_menu_router)
     dp.include_router(clean_router)
+    dp.include_router(ai_router)
     dp.include_router(money_router)
     dp.include_router(users_router)
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
     dp.include_router(file_router)
+    #dp.include_router(gpt_router)
     logger.info("Все роутеры успешно подключены.")
 
     # Установка команд бота
@@ -89,6 +94,8 @@ async def main():
         BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
         BotCommand(command="/ad", description="Открыть админ-меню"),
         BotCommand(command="/users", description="Управление пользователями"),
+        #BotCommand(command="/gpt_init", description="Инициализировать таблицу памяти GPT"),
+        #BotCommand(command="/generate", description="Сгенерировать изображение по запросу"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Команды бота успешно установлены.")

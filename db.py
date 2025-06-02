@@ -1,3 +1,4 @@
+# db.py
 import os
 import logging
 import asyncpg
@@ -101,22 +102,17 @@ async def create_tables():
             """
         )
 
-        # переименование старого столбца emoji -> emojis
+        # --- gpt_memory ---
         await conn.execute(
             """
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                      FROM information_schema.columns
-                     WHERE table_schema = 'public'
-                       AND table_name   = 'user_emojis'
-                       AND column_name  = 'emoji'
-                ) THEN
-                    EXECUTE 'ALTER TABLE user_emojis RENAME COLUMN emoji TO emojis';
-                END IF;
-            END;
-            $$;
+            CREATE TABLE IF NOT EXISTS gpt_memory (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                user_name TEXT,
+                message_type TEXT,
+                content TEXT,
+                timestamp BIGINT
+            );
             """
         )
 
@@ -142,6 +138,25 @@ async def create_tables():
             UPDATE bookings
                SET id = nextval(pg_get_serial_sequence('bookings','id'))
              WHERE id IS NULL;
+            """
+        )
+
+        # --- переименование старого столбца emoji -> emojis ---
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                      FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name   = 'user_emojis'
+                       AND column_name  = 'emoji'
+                ) THEN
+                    EXECUTE 'ALTER TABLE user_emojis RENAME COLUMN emoji TO emojis';
+                END IF;
+            END;
+            $$;
             """
         )
 

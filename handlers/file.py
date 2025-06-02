@@ -10,55 +10,67 @@ from aiogram.types import Message
 logger = logging.getLogger(__name__)
 router = Router(name="file_router")
 
-# ───── настройки ─────
-EXCLUDED_USER_IDS: Final[set[int]] = {
+# ───── разрешённые группы ─────
+_ALLOWED_CHATS: Final[frozenset[int]] = frozenset((
+    -1002503654146,   # Royal_1
+    -1002569987326,   # Royal_2
+    -1002699377044,   # Royal_3
+    -1002696765874,   # Royal_4
+    -1002555587028,   # Royal_5
+    -1002525751059,   # Royal_6
+))
+
+# ───── исключённые пользователи ─────
+EXCLUDED_USER_IDS: Final[frozenset[int]] = frozenset((
     7935161063,
     7281089930,
     1720928807,
     7894353415,
-}
-FILE_GROUP_ID: Final[int] = -1002260563352          # целевая «группа-файлов»
-TTL_SECONDS: Final[int] = 180                      # 3 минуты
+))
+
+FILE_GROUP_ID: Final[int] = -1002260563352
+TTL_SECONDS:   Final[int] = 180  # 3 минуты
 
 
-async def _delete_later(bot: Bot, chat_id: int, msg_id: int, delay: int = TTL_SECONDS):
-    """Удалить сообщение через delay секунд, игнорируем ошибки."""
+# ────────────────────────────────────── helpers ──────────────────────────────────────
+async def _delete_after(bot: Bot, chat_id: int, msg_id: int, delay: int = TTL_SECONDS):
     try:
         await asyncio.sleep(delay)
         await bot.delete_message(chat_id, msg_id)
     except Exception as e:
-        logger.debug("Cannot delete %s/%s: %s", chat_id, msg_id, e)
+        logger.debug("Delete failed %s/%s: %s", chat_id, msg_id, e)
 
 
+def _schedule_deletion(bot: Bot, chat_id: int, msg_id: int):
+    asyncio.create_task(_delete_after(bot, chat_id, msg_id))
+
+
+# ───────────────────────────────────── handler ───────────────────────────────────────
 @router.message(
-    F.photo,
-    F.chat.type.in_({"group", "supergroup"}),        # только групповые чаты
+    F.chat.id.in_(_ALLOWED_CHATS),                  # только нужные группы
+    F.photo,                                        # только фото-сообщения
 )
 async def handle_group_photo(message: Message, bot: Bot):
-    """
-    • Фото от UID из EXCLUDED_USER_IDS → просто удалить через 3 мин.
-    • Фото от остальных:
-        1) копия в FILE_GROUP_ID;
-        2) оригинал удалить через 3 мин.;
-        3) копию в FILE_GROUP_ID удалить через 3 мин.
-    """
-    uid = message.from_user.id
+    uid     = message.from_user.id
+    chat_id = message.chat.id
+    msg_id  = message.message_id
 
+    # — Фото от админ-UID → удалить через TTL
     if uid in EXCLUDED_USER_IDS:
-        asyncio.create_task(_delete_later(bot, message.chat.id, message.message_id))
+        _schedule_deletion(bot, chat_id, msg_id)
         return
 
-    # пересылаем/копируем в FILE_GROUP_ID
+    # — Фото от остальных → копируем в FILE_GROUP_ID
     try:
-        sent = await bot.copy_message(
+        copy = await bot.copy_message(
             chat_id=FILE_GROUP_ID,
-            from_chat_id=message.chat.id,
-            message_id=message.message_id,
+            from_chat_id=chat_id,
+            message_id=msg_id,
         )
-        # удалить копию в файловой группе
-        asyncio.create_task(_delete_later(bot, FILE_GROUP_ID, sent.message_id))
+        # удалить копию
+        _schedule_deletion(bot, FILE_GROUP_ID, copy.message_id)
     except Exception as e:
-        logger.warning("Cannot copy photo to file-group: %s", e)
+        logger.warning("Copy to file-group failed: %s", e)
 
-    # удалить оригинал в исходной группе
-    asyncio.create_task(_delete_later(bot, message.chat.id, message.message_id))
+    # удалить оригинал
+    _schedule_deletion(bot, chat_id, msg_id)
