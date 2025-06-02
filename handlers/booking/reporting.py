@@ -135,7 +135,7 @@ async def send_financial_report(bot: Bot):
 
     async with db.db_pool.acquire() as conn:
         rows = await conn.fetch("""
-            SELECT u.user_id, u.username, u.balance, e.emoji
+            SELECT u.user_id, u.username, u.balance, e.emojis
             FROM users u LEFT JOIN user_emojis e ON u.user_id=e.user_id
             ORDER BY u.user_id
         """)
