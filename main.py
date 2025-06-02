@@ -21,6 +21,7 @@ from handlers.menu_ad import menu_ad_router
 from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
 from handlers.ai import router as ai_router
+from handlers.file import router as file_router
 from db_access.booking_repo import BookingRepo
 
 async def main():
@@ -70,6 +71,7 @@ async def main():
     dp.include_router(users_router)
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
+    dp.include_router(file_router)
     logger.info("Все роутеры успешно подключены.")
 
     # Установка команд бота
