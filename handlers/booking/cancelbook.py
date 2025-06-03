@@ -1,22 +1,20 @@
-from aiogram import F
-from aiogram.types import (
-    Message, CallbackQuery,
-    InlineKeyboardMarkup, InlineKeyboardButton
-)
+import logging
+
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 
-from constants.booking_const import groups_data
+from utils.bot_utils import safe_answer
 from handlers.language import get_user_language, get_message
+import db
+from constants.booking_const import groups_data
 from handlers.booking.reporting import update_group_message
 from utils.time_utils import get_adjacent_time_slots
-from utils.bot_utils import safe_answer
 
-import db
-from aiogram import Router
 router = Router()
+PHOTO_ID = "photo/IMG_2585.JPG"
 
-PHOTO_ID = "photo/IMG_2585.JPG"  # общий файл-картинка для всех окон
 
 # ───────────────────────────── /off (Пользователь и меню) ───────────────────────────
 async def cmd_off(event):
@@ -26,6 +24,11 @@ async def cmd_off(event):
     """
     # Определяем uid и куда отвечать
     if isinstance(event, CallbackQuery):
+        # Игнорируем колбэки от самого бота
+        me = await event.bot.get_me()
+        if event.from_user.id == me.id:
+            return
+
         uid = event.from_user.id
         answer_target = event
     elif isinstance(event, Message):
@@ -82,22 +85,20 @@ async def cmd_off(event):
         reply_markup=kb
     )
 
+
 # ────────────── /off для Message ──────────────
 @router.message(Command("off"))
 async def cmd_off_message(message: Message):
     await cmd_off(message)
 
+
 # ─────────────────────────── /offad (Администратор) ───────────────────────────
 @router.message(Command("offad"))
 async def cmd_off_admin(message: Message):
-    """
-    Администраторская команда /offad:
-    Выводит список всех записей в таблице bookings (без фильтра по статусу),
-    и предлагает кнопки для отмены любой из них.
-    """
     uid = message.from_user.id
     lang = await get_user_language(uid)
 
+    # Если база данных ещё не инициализирована
     if not db.db_pool:
         return await safe_answer(
             message,
@@ -142,6 +143,11 @@ async def cmd_off_admin(message: Message):
 # ───────────────────── Callback: пользователь отменяет свою бронь ─────────────
 @router.callback_query(F.data.startswith("off_cancel_user_"))
 async def off_cancel_user(callback: CallbackQuery, state: FSMContext):
+    # Игнорируем колбэки от самого бота
+    me = await callback.bot.get_me()
+    if callback.from_user.id == me.id:
+        return
+
     uid = callback.from_user.id
     lang = await get_user_language(uid)
     bid = int(callback.data.removeprefix("off_cancel_user_"))
@@ -186,6 +192,7 @@ async def off_cancel_user(callback: CallbackQuery, state: FSMContext):
             g["unavailable_slots"][day].discard(adj)
             g["time_slot_statuses"].pop((day, adj), None)
 
+    # Обновляем групповое сообщение (если есть)
     await update_group_message(callback.bot, gk)
     await safe_answer(
         callback,
@@ -197,6 +204,11 @@ async def off_cancel_user(callback: CallbackQuery, state: FSMContext):
 # ───────────────────── Callback: админ отменяет чужую бронь ───────────────────
 @router.callback_query(F.data.startswith("off_cancel_admin_"))
 async def off_cancel_admin(callback: CallbackQuery, state: FSMContext):
+    # Игнорируем колбэки от самого бота
+    me = await callback.bot.get_me()
+    if callback.from_user.id == me.id:
+        return
+
     lang = await get_user_language(callback.from_user.id)
     bid = int(callback.data.removeprefix("off_cancel_admin_"))
 
@@ -219,6 +231,7 @@ async def off_cancel_admin(callback: CallbackQuery, state: FSMContext):
         gk = row["group_key"]
         await conn.execute("DELETE FROM bookings WHERE id = $1", bid)
 
+    # Обновляем групповое сообщение (если есть)
     await update_group_message(callback.bot, gk)
     await safe_answer(
         callback,

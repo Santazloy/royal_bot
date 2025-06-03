@@ -1,5 +1,3 @@
-# handlers/booking/user_flow.py
-
 from aiogram import Router, F
 from aiogram.types import (
     Message,
@@ -25,7 +23,6 @@ from db_access.booking_repo import BookingRepo
 from utils.time_utils import (
     generate_daily_time_slots as generate_time_slots,
     get_adjacent_time_slots,
-    get_slot_datetime_shanghai,
 )
 from handlers.booking.data_manager import async_book_slot
 from app_states import BookUserStates
@@ -47,7 +44,11 @@ async def cmd_book(message: Message, state: FSMContext):
     keys = data_mgr.list_group_keys()
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=k, callback_data=f"bkgrp_{k}") for k in keys[i : i + 3]]
+            [
+                InlineKeyboardButton(
+                    text=k, callback_data=f"bkgrp_{k}"
+                ) for k in keys[i : i + 3]
+            ]
             for i in range(0, len(keys), 3)
         ]
         + [[InlineKeyboardButton(text="« Назад", callback_data="bkmain_back")]]
@@ -58,12 +59,14 @@ async def cmd_book(message: Message, state: FSMContext):
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_group), F.data.startswith("bkgrp_"))
 async def user_select_group(cb: CallbackQuery, state: FSMContext):
-    """
-    Шаг 1: пользователь выбрал группу.
-    """
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
     gk = cb.data.removeprefix("bkgrp_")
     if gk not in groups_data:
-        return await safe_answer(cb, "Нет такой группы!", show_alert=True)
+        return await safe_answer(cb, get_message(await get_user_language(cb.from_user.id), "no_such_group"), show_alert=True)
     await state.update_data(selected_group=gk)
 
     kb = InlineKeyboardMarkup(
@@ -82,9 +85,11 @@ async def user_select_group(cb: CallbackQuery, state: FSMContext):
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_day), F.data.startswith("bkday_"))
 async def user_select_day(cb: CallbackQuery, state: FSMContext):
-    """
-    Шаг 2: пользователь выбрал день.
-    """
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
     day = cb.data.removeprefix("bkday_")
     await state.update_data(selected_day=day)
     await send_time_slots(cb, day, state)
@@ -92,13 +97,19 @@ async def user_select_day(cb: CallbackQuery, state: FSMContext):
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_day), F.data == "bkgroup_back")
 async def back_to_group_choice(cb: CallbackQuery, state: FSMContext):
-    """
-    Вернуться к выбору группы (кнопка «Назад» на этапе выбора дня).
-    """
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
     keys = data_mgr.list_group_keys()
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=k, callback_data=f"bkgrp_{k}") for k in keys[i : i + 3]]
+            [
+                InlineKeyboardButton(
+                    text=k, callback_data=f"bkgrp_{k}"
+                ) for k in keys[i : i + 3]
+            ]
             for i in range(0, len(keys), 3)
         ]
         + [[InlineKeyboardButton(text="« Назад", callback_data="bkmain_back")]]
@@ -110,9 +121,11 @@ async def back_to_group_choice(cb: CallbackQuery, state: FSMContext):
 
 @router.callback_query(StateFilter(BookUserStates.waiting_for_group), F.data == "bkmain_back")
 async def back_to_main_menu(cb: CallbackQuery, state: FSMContext):
-    """
-    Сброс состояния и возврат из меню бронирования в общий чат.
-    """
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
     await cb.answer()
     await state.clear()
 
@@ -122,10 +135,11 @@ async def send_time_slots(
     selected_day: str,
     state: FSMContext,
 ):
-    """
-    Показывает выбор свободных слотов на указанный день (Сегодня/Завтра).
-    Учёт занятых слотов и их соседей ±30 минут.
-    """
+    # Игнорируем колбэки от самого бота
+    me = await callback_query.bot.get_me()
+    if callback_query.from_user.id == me.id:
+        return
+
     data = await state.get_data()
     gk = data["selected_group"]
     ginfo = groups_data[gk]
@@ -143,7 +157,11 @@ async def send_time_slots(
     row = []
     for slot in generate_time_slots():
         if slot not in busy:
-            row.append(InlineKeyboardButton(text=slot, callback_data=f"bkslot_{slot.replace(':','_')}"))
+            row.append(
+                InlineKeyboardButton(
+                    text=slot, callback_data=f"bkslot_{slot.replace(':','_')}"
+                )
+            )
             if len(row) == 4:
                 buttons.append(row)
                 row = []
@@ -166,12 +184,14 @@ async def send_time_slots(
     await callback_query.answer()
     await state.set_state(BookUserStates.waiting_for_time)
 
+
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data.startswith("bkslot_"))
 async def user_select_time(cb: CallbackQuery, state: FSMContext):
-    """
-    Шаг 3: пользователь выбрал слот.
-    Сохраняем бронирование в памяти и БД, отправляем отчёт, обновляем состояние.
-    """
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
     slot = cb.data.removeprefix("bkslot_").replace("_", ":")
     data = await state.get_data()
     gk, day, uid = data["selected_group"], data["selected_day"], cb.from_user.id
@@ -201,11 +221,14 @@ async def user_select_time(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     await update_group_message(cb.bot, gk)
 
+
 @router.callback_query(StateFilter(BookUserStates.waiting_for_time), F.data == "bkday_back")
 async def back_to_day_choice(cb: CallbackQuery, state: FSMContext):
-    """
-    Шаг 3.1: пользователю предложили выбрать время, он нажал «Назад» → возвращаем выбор дня.
-    """
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
     data = await state.get_data()
     gk = data["selected_group"]
     kb = InlineKeyboardMarkup(

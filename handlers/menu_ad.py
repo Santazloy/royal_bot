@@ -1,5 +1,3 @@
-# handlers/menu_ad.py
-
 import logging
 from aiogram import Router
 from aiogram.types import Message, CallbackQuery
@@ -68,12 +66,13 @@ async def show_admin_menu(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
     if not is_user_admin(message.from_user.id):
         return await safe_answer(message, get_message(lang, "admin_only"))
+
     chat_id = message.chat.id
     prev_id = last_admin_menu_message.get(chat_id)
     if prev_id:
         try:
             await message.bot.delete_message(chat_id=chat_id, message_id=prev_id)
-        except:
+        except Exception:
             pass
 
     kb = build_admin_menu_keyboard(lang)
@@ -100,7 +99,8 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     if action == "salary":
         return await salary_command(callback.message, state)
     if action == "emoji":
-        return await cmd_emoji(callback.message, callback.bot)
+        # Передаём сам CallbackQuery, чтобы cmd_emoji увидел реальный from_user.id
+        return await cmd_emoji(callback, callback.bot)
     if action == "money":
         return await money_command(callback.message, state)
     if action == "offad":

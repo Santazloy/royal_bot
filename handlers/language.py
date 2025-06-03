@@ -55,11 +55,6 @@ TRANSLATIONS = {
         'ru': 'Последние новости:',
         'zh': '最新新闻：',
     },
-    'menu_unknown': {
-        'en': 'Unknown menu action!',
-        'ru': 'Неизвестная команда меню!',
-        'zh': '未知的菜单操作！',
-    },
 
     # Общие сообщения
     'no_action': {
@@ -398,6 +393,18 @@ TRANSLATIONS = {
     'plus_sign':            {'en': '+',                                'ru': '+',                                  'zh': '+'},
     'minus_sign':           {'en': '-',                                'ru': '-',                                  'zh': '-'},
     'back_arrow_raw':       {'en': '« Back',                           'ru': '« Назад',                            'zh': '« 返回'},
+
+    'start_wait_approval': {
+        'en': 'Please wait—your account has been sent to the administrator for approval.',
+        'ru': 'Ожидайте — ваш аккаунт отправлен на рассмотрение администратору.',
+        'zh': '请稍候——您的账号已发送给管理员审核。',
+    },
+    'start_success': {
+        'en': 'Welcome back! Your emoji is already assigned.',
+        'ru': 'Добро пожаловать! Эмодзи уже назначен.',
+        'zh': '欢迎回来！您的表情已分配。',
+    },
+
 
     # Генерация изображений
     'generate_no_text':     {'en': 'Specify text after /generate.',
