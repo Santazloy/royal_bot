@@ -1,4 +1,5 @@
 # db.py
+
 import os
 import logging
 import asyncpg
@@ -85,6 +86,7 @@ async def create_tables():
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
                 username TEXT,
+                language TEXT,
                 balance BIGINT NOT NULL DEFAULT 0,
                 profit BIGINT NOT NULL DEFAULT 0,
                 monthly_profit BIGINT NOT NULL DEFAULT 0
@@ -97,7 +99,18 @@ async def create_tables():
             """
             CREATE TABLE IF NOT EXISTS user_emojis (
                 user_id BIGINT PRIMARY KEY,
+                next_idx BIGINT DEFAULT 0,
                 emojis TEXT DEFAULT ''
+            );
+            """
+        )
+
+        # --- user_settings ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id BIGINT PRIMARY KEY,
+                language TEXT NOT NULL
             );
             """
         )
@@ -116,44 +129,210 @@ async def create_tables():
             """
         )
 
-        # --- user_settings ---
+        # --- embeddings ---
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS user_settings (
-                user_id BIGINT PRIMARY KEY,
-                language TEXT NOT NULL
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id SERIAL PRIMARY KEY,
+                group_id BIGINT,
+                user_id BIGINT,
+                embedding_vector FLOAT8[],
+                created_at TIMESTAMPTZ DEFAULT NOW()
             );
             """
         )
 
-        # --- гарантируем наличие id в bookings ---
+        # --- messages ---
         await conn.execute(
             """
-            ALTER TABLE bookings
-            ADD COLUMN IF NOT EXISTS id BIGSERIAL UNIQUE;
-            """
-        )
-        await conn.execute(
-            """
-            UPDATE bookings
-               SET id = nextval(pg_get_serial_sequence('bookings','id'))
-             WHERE id IS NULL;
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                group_id BIGINT,
+                user_id BIGINT,
+                user_name TEXT,
+                text TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
             """
         )
 
-        # --- переименование старого столбца emoji -> emojis ---
+        # --- message_history ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS message_history (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMPTZ DEFAULT NOW(),
+                user_id BIGINT,
+                role TEXT,
+                content TEXT
+            );
+            """
+        )
+
+        # --- news ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS news (
+                id SERIAL PRIMARY KEY,
+                file_ids TEXT,
+                text TEXT
+            );
+            """
+        )
+
+        # --- reminders ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reminders (
+                id SERIAL PRIMARY KEY,
+                booking_id BIGINT,
+                type TEXT
+            );
+            """
+        )
+
+        # --- mathematic_groups ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mathematic_groups (
+                group_id BIGINT PRIMARY KEY,
+                name TEXT,
+                total FLOAT
+            );
+            """
+        )
+
+        # --- individual_groups ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS individual_groups (
+                id SERIAL PRIMARY KEY,
+                group_id BIGINT,
+                name TEXT,
+                user_totals TEXT
+            );
+            """
+        )
+
+        # --- group_photos ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS group_photos (
+                id SERIAL PRIMARY KEY,
+                group_key TEXT,
+                file_ids TEXT,
+                description TEXT
+            );
+            """
+        )
+
+        # --- distributions ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS distributions (
+                id SERIAL PRIMARY KEY,
+                group_key TEXT,
+                status_code TEXT,
+                amount BIGINT,
+                distribution_amount BIGINT,
+                date TIMESTAMPTZ DEFAULT NOW()
+            );
+            """
+        )
+
+        # --- transactions ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT,
+                user_id BIGINT,
+                amount NUMERIC,
+                type VARCHAR,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            """
+        )
+
+        # --- balances ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS balances (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT,
+                balance NUMERIC,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            """
+        )
+
+        # --- stats ---
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stats (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT,
+                report_date DATE,
+                period_type VARCHAR,
+                plus_total NUMERIC,
+                minus_total NUMERIC,
+                net_result NUMERIC,
+                balance_start NUMERIC,
+                balance_end NUMERIC,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            """
+        )
+
+        # --- group_time_slot_statuses: добавляем отсутствующие столбцы, если нужно ---
         await conn.execute(
             """
             DO $$
             BEGIN
-                IF EXISTS (
+                IF NOT EXISTS (
                     SELECT 1
-                      FROM information_schema.columns
-                     WHERE table_schema = 'public'
-                       AND table_name   = 'user_emojis'
-                       AND column_name  = 'emoji'
+                    FROM information_schema.columns
+                    WHERE table_name='group_time_slot_statuses' AND column_name='user_id'
                 ) THEN
-                    EXECUTE 'ALTER TABLE user_emojis RENAME COLUMN emoji TO emojis';
+                    ALTER TABLE group_time_slot_statuses ADD COLUMN user_id BIGINT;
+                END IF;
+            END;
+            $$;
+            """
+        )
+
+        # --- bookings: добавляем отсутствующие столбцы, если нужно ---
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='bookings' AND column_name='status_code'
+                ) THEN
+                    ALTER TABLE bookings ADD COLUMN status_code TEXT;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='bookings' AND column_name='payment_method'
+                ) THEN
+                    ALTER TABLE bookings ADD COLUMN payment_method TEXT;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='bookings' AND column_name='amount'
+                ) THEN
+                    ALTER TABLE bookings ADD COLUMN amount INTEGER;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='bookings' AND column_name='emoji'
+                ) THEN
+                    ALTER TABLE bookings ADD COLUMN emoji TEXT DEFAULT '';
                 END IF;
             END;
             $$;

@@ -13,25 +13,17 @@ class BookingRepo:
         self.pool = pool
 
     async def load_data(self) -> None:
-        """
-        Загружает из БД в память:
-         - брони из таблицы bookings
-         - статусы из group_time_slot_statuses
-         - unavailable_slots (для статуса 'unavailable')
-        """
         pool = db.db_pool or self.pool
         if not pool:
             logger.error("db_pool is None при load_data")
             return
 
-        # --- Сброс памяти ---
         for g in groups_data.values():
-            g["booked_slots"]     = {"Сегодня": [], "Завтра": []}
-            g["slot_bookers"]     = {}
-            g["time_slot_statuses"]= {}
-            g["unavailable_slots"]= {"Сегодня": set(), "Завтра": set()}
+            g["booked_slots"]      = {"Сегодня": [], "Завтра": []}
+            g["slot_bookers"]      = {}
+            g["time_slot_statuses"] = {}
+            g["unavailable_slots"] = {"Сегодня": set(), "Завтра": set()}
 
-        # --- 1) Брони ---
         async with pool.acquire() as conn:
             bookings = await conn.fetch(
                 "SELECT group_key, day, time_slot, user_id FROM bookings"
@@ -42,7 +34,6 @@ class BookingRepo:
                 groups_data[gk]["booked_slots"][day].append(slot)
                 groups_data[gk]["slot_bookers"][(day, slot)] = uid
 
-        # --- 2) Статусы ---
         async with pool.acquire() as conn:
             statuses = await conn.fetch(
                 "SELECT group_key, day, time_slot, status, user_id "
@@ -58,20 +49,18 @@ class BookingRepo:
     async def add_booking(
         self, group_key: str, day: str,
         time_slot: str, user_id: int,
-        start_time  # объект datetime, не строка!
+        start_time
     ) -> None:
         pool = db.db_pool or self.pool
         async with pool.acquire() as conn:
-            # вставка брони
             await conn.execute(
                 """
                 INSERT INTO bookings
-                  (group_key, day, time_slot, user_id, status, start_time)
-                VALUES ($1,$2,$3,$4,'booked',$5)
+                  (group_key, day, time_slot, user_id, status, status_code, start_time)
+                VALUES ($1,$2,$3,$4,'booked','', $5)
                 """,
                 group_key, day, time_slot, user_id, start_time
             )
-            # вставка статуса booked
             await conn.execute(
                 """
                 INSERT INTO group_time_slot_statuses
@@ -104,7 +93,6 @@ class BookingRepo:
     ) -> None:
         pool = db.db_pool or self.pool
         async with pool.acquire() as conn:
-            # удалить из bookings и из статусов
             await conn.execute(
                 "DELETE FROM bookings WHERE group_key=$1 AND day=$2 AND time_slot=$3",
                 group_key, day, slot
@@ -121,7 +109,6 @@ class BookingRepo:
     ) -> None:
         pool = db.db_pool or self.pool
         async with pool.acquire() as conn:
-            # обновить статус в таблице bookings
             await conn.execute(
                 """
                 UPDATE bookings
@@ -130,7 +117,6 @@ class BookingRepo:
                 """,
                 status_code, emoji, group_key, day, slot
             )
-            # обновить/вставить статус в group_time_slot_statuses
             await conn.execute(
                 """
                 INSERT INTO group_time_slot_statuses
