@@ -45,11 +45,12 @@ class BookingDataManager:
 # --- Асинхронная функция для бронирования слота с записью в БД и ротацией эмодзи ---
 async def async_book_slot(group_key: str, day: str, slot: str, user_id: int):
     """
-    Асинхронное бронирование: делает ротацию эмодзи, записывает бронирование в БД и обновляет in-memory.
+    Асинхронное бронирование: делает ротацию эмодзи,
+    записывает бронирование в БД и обновляет in-memory.
     """
     emoji_for_slot = await get_next_emoji(user_id)
 
-    # 1. Записываем в БД
+    # 1. Записываем в БД, конфликтуем по (group_key, day, time_slot)
     if db.db_pool:
         async with db.db_pool.acquire() as conn:
             await conn.execute(
@@ -57,8 +58,12 @@ async def async_book_slot(group_key: str, day: str, slot: str, user_id: int):
                 INSERT INTO bookings
                     (group_key, day, time_slot, user_id, status, emoji)
                 VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (group_key, day, time_slot, user_id)
-                DO UPDATE SET status=$5, emoji=$6
+                ON CONFLICT (group_key, day, time_slot)
+                DO UPDATE
+                  SET
+                    user_id = EXCLUDED.user_id,
+                    status  = EXCLUDED.status,
+                    emoji   = EXCLUDED.emoji
                 """,
                 group_key, day, slot, user_id, "booked", emoji_for_slot
             )

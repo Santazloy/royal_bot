@@ -8,7 +8,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import TELEGRAM_BOT_TOKEN
 import db
 
-# Импорт роутеров
 from handlers.group_id import router as group_id_router
 from handlers.idphoto import router as idphoto_router
 from handlers.startemoji import router as startemoji_router
@@ -22,9 +21,12 @@ from handlers.menu_ad import menu_ad_router
 from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
 from handlers.file import router as file_router
-from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
+#from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
 from handlers.ai import router as ai_router
-from handlers.next import router as next_router
+
+# Импортируем next_router и функцию планировщика
+from handlers.next import router as next_router, register_daily_scheduler
+
 from db_access.booking_repo import BookingRepo
 
 async def main():
@@ -37,7 +39,7 @@ async def main():
 
     logger.info("Запуск приложения...")
 
-    # Инициализация подключения к БД
+    # Инициализация базы данных
     logger.debug("Инициализация подключения к базе данных...")
     await db.init_db_pool()
     await db.create_tables()
@@ -54,19 +56,19 @@ async def main():
     await load_salary_data_from_db()
     logger.info("Настройки salary успешно загружены из БД.")
 
-    # Настройка бота и диспетчера с памятью FSM
+    # Создание Bot и Dispatcher
     logger.debug("Создание экземпляра бота и диспетчера...")
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
     # Регистрация on_startup для GPT
-    dp.startup.register(gpt_on_startup)
+    #dp.startup.register(gpt_on_startup)
 
     # Подключение роутеров
     logger.debug("Подключение роутеров...")
     dp.include_router(language_router)
-    dp.include_router(next_router)
+    dp.include_router(next_router)           # роутер из handlers/next.py
     dp.include_router(group_id_router)
     dp.include_router(idphoto_router)
     dp.include_router(startemoji_router)
@@ -80,8 +82,11 @@ async def main():
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
     dp.include_router(file_router)
-    dp.include_router(gpt_router)
+    #dp.include_router(gpt_router)
     logger.info("Все роутеры успешно подключены.")
+
+    # Регистрируем фоновый таск, выполняющий do_next_core в 03:00 Asia/Shanghai
+    register_daily_scheduler(dp, bot)
 
     # Установка команд бота
     logger.debug("Установка команд бота...")
@@ -95,18 +100,19 @@ async def main():
         BotCommand(command="/salary", description="Настроить salary (админ)"),
         BotCommand(command="/money", description="Изменить зарплату/наличные"),
         BotCommand(command="/off", description="Отменить свою бронь"),
-        BotCommand(command="/offad", description="Отмена чужих броней (админ)"),
-        BotCommand(command="/ad", description="Открыть админ-меню"),
+        BotCommand(command="/offad", description="Отмена чужих бронирований (админ)"),
+        BotCommand(command="/ad", description="Открыть админ‐меню"),
         BotCommand(command="/users", description="Управление пользователями"),
-        BotCommand(command="/gpt_init", description="Инициализировать таблицу памяти GPT"),
-        BotCommand(command="/generate", description="Сгенерировать изображение по запросу"),
+        #BotCommand(command="/gpt_init", description="Инициализировать таблицу памяти GPT"),
+        #BotCommand(command="/generate", description="Сгенерировать изображение по запросу"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Команды бота успешно установлены.")
 
+    # Удаляем webhook (если был) и запускаем polling
     logger.debug("Удаление webhook (если установлен)...")
     await bot.delete_webhook(drop_pending_updates=True)
-    logger.info("Webhook удалён. Добавляем задержку для стабилизации соединения...")
+    logger.info("Webhook удалён. Ждем 2 секунды...")
     await asyncio.sleep(2)
 
     logger.info("Запуск polling для получения обновлений от Telegram...")
@@ -118,6 +124,7 @@ async def main():
         logger.debug("Закрытие подключения к базе данных...")
         await db.close_db_pool()
         logger.info("Подключение к базе данных закрыто. Завершение работы приложения.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
