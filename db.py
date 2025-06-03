@@ -35,10 +35,10 @@ async def create_tables():
         raise RuntimeError("db_pool is None! Сначала вызовите init_db_pool().")
 
     async with db_pool.acquire() as conn:
+        # --- bookings ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS bookings (
-                id BIGSERIAL UNIQUE,
                 group_key TEXT NOT NULL,
                 day TEXT NOT NULL,
                 time_slot TEXT NOT NULL,
@@ -49,11 +49,30 @@ async def create_tables():
                 payment_method TEXT,
                 amount INTEGER,
                 emoji TEXT DEFAULT '',
+                id BIGSERIAL,
                 PRIMARY KEY (group_key, day, time_slot, user_id)
             );
             """
         )
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                      FROM pg_constraint
+                     WHERE conname = 'bookings_pkey'
+                       AND conrelid = 'bookings'::regclass
+                ) THEN
+                    ALTER TABLE bookings
+                    ADD PRIMARY KEY (group_key, day, time_slot, user_id);
+                END IF;
+            END;
+            $$;
+            """
+        )
 
+        # --- group_time_slot_statuses ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS group_time_slot_statuses (
@@ -66,7 +85,25 @@ async def create_tables():
             );
             """
         )
+        await conn.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                      FROM pg_constraint
+                     WHERE conname = 'group_time_slot_statuses_pkey'
+                       AND conrelid = 'group_time_slot_statuses'::regclass
+                ) THEN
+                    ALTER TABLE group_time_slot_statuses
+                    ADD PRIMARY KEY (group_key, day, time_slot);
+                END IF;
+            END;
+            $$;
+            """
+        )
 
+        # --- group_financial_data ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS group_financial_data (
@@ -79,6 +116,7 @@ async def create_tables():
             """
         )
 
+        # --- users ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -92,6 +130,7 @@ async def create_tables():
             """
         )
 
+        # --- user_emojis ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_emojis (
@@ -102,6 +141,7 @@ async def create_tables():
             """
         )
 
+        # --- user_settings ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_settings (
@@ -111,6 +151,7 @@ async def create_tables():
             """
         )
 
+        # --- gpt_memory ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS gpt_memory (
@@ -124,6 +165,7 @@ async def create_tables():
             """
         )
 
+        # --- embeddings ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS embeddings (
@@ -136,6 +178,7 @@ async def create_tables():
             """
         )
 
+        # --- messages ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -149,6 +192,7 @@ async def create_tables():
             """
         )
 
+        # --- message_history ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS message_history (
@@ -161,6 +205,7 @@ async def create_tables():
             """
         )
 
+        # --- news ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS news (
@@ -171,6 +216,7 @@ async def create_tables():
             """
         )
 
+        # --- reminders ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS reminders (
@@ -181,6 +227,7 @@ async def create_tables():
             """
         )
 
+        # --- mathematic_groups ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS mathematic_groups (
@@ -191,6 +238,7 @@ async def create_tables():
             """
         )
 
+        # --- individual_groups ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS individual_groups (
@@ -202,6 +250,7 @@ async def create_tables():
             """
         )
 
+        # --- group_photos ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS group_photos (
@@ -213,6 +262,7 @@ async def create_tables():
             """
         )
 
+        # --- distributions ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS distributions (
@@ -226,6 +276,7 @@ async def create_tables():
             """
         )
 
+        # --- transactions ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS transactions (
@@ -239,6 +290,7 @@ async def create_tables():
             """
         )
 
+        # --- balances ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS balances (
@@ -250,6 +302,7 @@ async def create_tables():
             """
         )
 
+        # --- stats ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS stats (
@@ -264,59 +317,6 @@ async def create_tables():
                 balance_end NUMERIC,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
-            """
-        )
-
-        await conn.execute(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='group_time_slot_statuses' AND column_name='user_id'
-                ) THEN
-                    ALTER TABLE group_time_slot_statuses ADD COLUMN user_id BIGINT;
-                END IF;
-            END;
-            $$;
-            """
-        )
-
-        await conn.execute(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='bookings' AND column_name='status_code'
-                ) THEN
-                    ALTER TABLE bookings ADD COLUMN status_code TEXT;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='bookings' AND column_name='payment_method'
-                ) THEN
-                    ALTER TABLE bookings ADD COLUMN payment_method TEXT;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='bookings' AND column_name='amount'
-                ) THEN
-                    ALTER TABLE bookings ADD COLUMN amount INTEGER;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name='bookings' AND column_name='emoji'
-                ) THEN
-                    ALTER TABLE bookings ADD COLUMN emoji TEXT DEFAULT '';
-                END IF;
-            END;
-            $$;
             """
         )
 
