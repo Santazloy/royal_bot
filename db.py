@@ -35,7 +35,7 @@ async def create_tables():
         raise RuntimeError("db_pool is None! Сначала вызовите init_db_pool().")
 
     async with db_pool.acquire() as conn:
-        # --- bookings ---
+        # --- bookings (убрали колонку id BIGSERIAL) ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS bookings (
@@ -49,12 +49,11 @@ async def create_tables():
                 payment_method TEXT,
                 amount INTEGER,
                 emoji TEXT DEFAULT '',
-                id BIGSERIAL,
                 PRIMARY KEY (group_key, day, time_slot, user_id)
             );
             """
         )
-        # Убедимся, что составной PK задан
+        # Проверяем, что составной PK задан (хотя CREATE TABLE с PRIMARY KEY уже создал его)
         await conn.execute(
             """
             DO $$
@@ -72,7 +71,7 @@ async def create_tables():
             $$;
             """
         )
-        # Добавляем уникальный индекс на (group_key, day, time_slot)
+        # Обеспечиваем уникальность (group_key, day, time_slot) для любого пользователя
         await conn.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS bookings_uq_slot
