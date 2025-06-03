@@ -4,6 +4,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
+from aiogram.fsm.storage.memory import MemoryStorage
 from config import TELEGRAM_BOT_TOKEN
 import db
 
@@ -52,10 +53,11 @@ async def main():
     await load_salary_data_from_db()
     logger.info("Настройки salary успешно загружены из БД.")
 
-    # Настройка бота и диспетчера
+    # Настройка бота и диспетчера с памятью FSM
     logger.debug("Создание экземпляра бота и диспетчера...")
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
-    dp = Dispatcher()
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
 
     # Регистрация on_startup для GPT
     dp.startup.register(gpt_on_startup)
