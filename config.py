@@ -23,6 +23,7 @@ GROUP_IDS = [
 ]
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+FINANCIAL_REPORT_GROUP_ID = int(os.getenv("FINANCIAL_REPORT_GROUP_ID", "0"))
 
 # 2) Разбор ADMIN_IDS из .env
 _admins = os.getenv("ADMIN_IDS", "")

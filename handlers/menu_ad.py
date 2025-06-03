@@ -1,3 +1,5 @@
+# handlers/menu_ad.py
+
 import logging
 from aiogram import Router
 from aiogram.types import Message, CallbackQuery
@@ -18,6 +20,9 @@ from handlers.booking.cancelbook import cmd_off_admin
 from handlers.leonard import leonard_menu_callback
 from handlers.users import show_users_via_callback
 
+# Импорт нашего нового хендлера "reset day"
+from handlers.next import callback_reset_day, cmd_next  # or import router and let main.py register it
+
 last_admin_menu_message: dict[int, int] = {}
 
 PHOTO_ID = "photo/IMG_2585.JPG"
@@ -31,7 +36,7 @@ EMOJI_MAP = {
     "balances":   "📊",
     "rules":      "📜",
     "conversion": "🔄",
-    "reset_day":  "🔁",
+    "reset_day":  "🔁",  # ← иконка для кнопки "Сброс дня"
     "back":       "🔙",
 }
 
@@ -66,13 +71,12 @@ async def show_admin_menu(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
     if not is_user_admin(message.from_user.id):
         return await safe_answer(message, get_message(lang, "admin_only"))
-
     chat_id = message.chat.id
     prev_id = last_admin_menu_message.get(chat_id)
     if prev_id:
         try:
             await message.bot.delete_message(chat_id=chat_id, message_id=prev_id)
-        except Exception:
+        except:
             pass
 
     kb = build_admin_menu_keyboard(lang)
@@ -91,27 +95,43 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     action = callback.data
 
+    # Игнорируем свой же колбэк
+    me = await callback.bot.get_me()
+    if callback.from_user.id == me.id:
+        return
+
     if not is_user_admin(callback.from_user.id):
         return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
 
     if action == "leonard":
         return await leonard_menu_callback(callback, state)
+
     if action == "salary":
         return await salary_command(callback.message, state)
+
     if action == "emoji":
-        # Передаём сам CallbackQuery, чтобы cmd_emoji увидел реальный from_user.id
-        return await cmd_emoji(callback, callback.bot)
+        return await cmd_emoji(callback.message, callback.bot)
+
     if action == "money":
         return await money_command(callback.message, state)
+
     if action == "offad":
         return await cmd_off_admin(callback.message)
+
     if action == "clean":
         return await clean_via_button(callback, state)
+
     if action == "balances":
         return await show_users_via_callback(callback, state)
-    if action in ("rules", "conversion", "reset_day"):
+
+    if action in ("rules", "conversion"):
         key = f"menu_{action}_header"
         return await safe_answer(callback, get_message(lang, key, default="Не реализовано"))
+
+    if action == "reset_day":
+        # Запускаем нашу новую логику переноса «Завтра» → «Сегодня»
+        return await callback_reset_day(callback, state)
+
     if action == "back":
         await safe_answer(callback, get_message(lang, "menu_back_confirm", default="Выход из админ-меню."))
         return await state.clear()

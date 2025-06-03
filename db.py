@@ -54,6 +54,7 @@ async def create_tables():
             );
             """
         )
+        # Убедимся, что составной PK задан
         await conn.execute(
             """
             DO $$
@@ -69,6 +70,13 @@ async def create_tables():
                 END IF;
             END;
             $$;
+            """
+        )
+        # Добавляем уникальный индекс на (group_key, day, time_slot)
+        await conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS bookings_uq_slot
+              ON bookings (group_key, day, time_slot);
             """
         )
 

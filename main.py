@@ -24,6 +24,7 @@ from handlers.leonard import leonard_menu_router
 from handlers.file import router as file_router
 from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
 from handlers.ai import router as ai_router
+from handlers.next import router as next_router
 from db_access.booking_repo import BookingRepo
 
 async def main():
@@ -65,6 +66,7 @@ async def main():
     # Подключение роутеров
     logger.debug("Подключение роутеров...")
     dp.include_router(language_router)
+    dp.include_router(next_router)
     dp.include_router(group_id_router)
     dp.include_router(idphoto_router)
     dp.include_router(startemoji_router)
