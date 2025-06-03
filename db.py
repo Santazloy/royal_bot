@@ -2,6 +2,7 @@
 
 import os
 import logging
+import ssl
 import asyncpg
 
 db_pool: asyncpg.pool.Pool | None = None
@@ -18,13 +19,14 @@ async def init_db_pool():
         PGUSER = os.getenv("PGUSER", "")
         PGPASSWORD = os.getenv("PGPASSWORD", "")
         PGDATABASE = os.getenv("PGDATABASE", "")
-        conn_str = (
-            f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
-            "?sslmode=require"
-        )
+        conn_str = f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
         logging.info("Подключаемся к БД: %s", conn_str)
 
-    db_pool = await asyncpg.create_pool(dsn=conn_str)
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+
+    db_pool = await asyncpg.create_pool(dsn=conn_str, ssl=ssl_ctx)
     logging.info("Подключение к PostgreSQL установлено.")
 
 
@@ -33,7 +35,6 @@ async def create_tables():
         raise RuntimeError("db_pool is None! Сначала вызовите init_db_pool().")
 
     async with db_pool.acquire() as conn:
-        # --- bookings ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS bookings (
@@ -53,7 +54,6 @@ async def create_tables():
             """
         )
 
-        # --- group_time_slot_statuses ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS group_time_slot_statuses (
@@ -67,7 +67,6 @@ async def create_tables():
             """
         )
 
-        # --- group_financial_data ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS group_financial_data (
@@ -80,7 +79,6 @@ async def create_tables():
             """
         )
 
-        # --- users ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -94,7 +92,6 @@ async def create_tables():
             """
         )
 
-        # --- user_emojis ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_emojis (
@@ -105,7 +102,6 @@ async def create_tables():
             """
         )
 
-        # --- user_settings ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS user_settings (
@@ -115,7 +111,6 @@ async def create_tables():
             """
         )
 
-        # --- gpt_memory ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS gpt_memory (
@@ -129,7 +124,6 @@ async def create_tables():
             """
         )
 
-        # --- embeddings ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS embeddings (
@@ -142,7 +136,6 @@ async def create_tables():
             """
         )
 
-        # --- messages ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -156,7 +149,6 @@ async def create_tables():
             """
         )
 
-        # --- message_history ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS message_history (
@@ -169,7 +161,6 @@ async def create_tables():
             """
         )
 
-        # --- news ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS news (
@@ -180,7 +171,6 @@ async def create_tables():
             """
         )
 
-        # --- reminders ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS reminders (
@@ -191,7 +181,6 @@ async def create_tables():
             """
         )
 
-        # --- mathematic_groups ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS mathematic_groups (
@@ -202,7 +191,6 @@ async def create_tables():
             """
         )
 
-        # --- individual_groups ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS individual_groups (
@@ -214,7 +202,6 @@ async def create_tables():
             """
         )
 
-        # --- group_photos ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS group_photos (
@@ -226,7 +213,6 @@ async def create_tables():
             """
         )
 
-        # --- distributions ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS distributions (
@@ -240,7 +226,6 @@ async def create_tables():
             """
         )
 
-        # --- transactions ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS transactions (
@@ -254,7 +239,6 @@ async def create_tables():
             """
         )
 
-        # --- balances ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS balances (
@@ -266,7 +250,6 @@ async def create_tables():
             """
         )
 
-        # --- stats ---
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS stats (
@@ -284,7 +267,6 @@ async def create_tables():
             """
         )
 
-        # --- group_time_slot_statuses: добавляем отсутствующие столбцы, если нужно ---
         await conn.execute(
             """
             DO $$
@@ -301,7 +283,6 @@ async def create_tables():
             """
         )
 
-        # --- bookings: добавляем отсутствующие столбцы, если нужно ---
         await conn.execute(
             """
             DO $$
