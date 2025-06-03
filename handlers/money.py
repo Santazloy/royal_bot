@@ -22,17 +22,10 @@ from handlers.booking.reporting import (
     send_financial_report,
 )
 from handlers.language import get_user_language, get_message
+from handlers.states import MoneyStates
 
 logger = logging.getLogger(__name__)
 money_router = Router()
-
-
-class MoneyStates(StatesGroup):
-    waiting_for_type         = State()
-    waiting_for_group_choice = State()
-    waiting_for_operation    = State()
-    waiting_for_amount       = State()
-
 
 MONEY_PHOTO = "photo/IMG_2585.JPG"
 

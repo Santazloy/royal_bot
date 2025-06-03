@@ -12,7 +12,7 @@ from constants.booking_const import status_mapping, groups_data, distribution_va
 from constants.salary import salary_options
 from handlers.booking.reporting import update_group_message, send_financial_report
 from handlers.booking.rewards import update_user_financial_info
-from app_states import BookPaymentStates
+from handlers.states import BookPaymentStates
 from utils.bot_utils import safe_answer
 
 import db

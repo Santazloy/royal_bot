@@ -10,7 +10,7 @@ from handlers.booking.user_flow import (
     user_select_day,
     user_select_time
 )
-from app_states import BookUserStates
+from states import BookUserStates
 from constants.booking_const import groups_data
 
 

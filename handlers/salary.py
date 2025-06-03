@@ -16,7 +16,7 @@ import db
 from config import is_user_admin
 from constants.booking_const import groups_data
 from constants.salary import salary_options
-from states.salary_states import SalaryStates
+from handlers.states import SalaryStates
 from handlers.language import get_user_language, get_message
 from utils.bot_utils import safe_answer  # общая функция для удаления предыдущего сообщения
 

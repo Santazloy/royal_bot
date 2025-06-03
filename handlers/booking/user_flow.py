@@ -25,7 +25,7 @@ from utils.time_utils import (
     get_adjacent_time_slots,
 )
 from handlers.booking.data_manager import async_book_slot
-from app_states import BookUserStates
+from handlers.states import BookUserStates
 from utils.bot_utils import safe_answer
 import db
 

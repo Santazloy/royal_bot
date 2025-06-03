@@ -7,7 +7,7 @@ import openai
 import aiohttp
 import db
 from aiogram import Router, Bot
-from aiogram.types import Message, FSInputFile, PhotoSize
+from aiogram.types import Message, FSInputFile
 from aiogram.filters import Command
 from aiogram import F
 from config import TELEGRAM_BOT_TOKEN, OPENAI_API_KEY

@@ -1,3 +1,5 @@
+# handlers/startemoji.py
+
 import logging
 from typing import List, Union
 
@@ -10,13 +12,13 @@ from aiogram.types import (
 )
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
 
 import db
 from config import is_user_admin, ADMIN_IDS
 from handlers.language import get_user_language, get_message
 from utils.bot_utils import safe_answer
+from handlers.states import EmojiStates
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -28,11 +30,6 @@ CUSTOM_EMOJIS = [
     "🏓", "🏸", "🥅", "⛳️", "🪁", "🏒", "🏑", "🏏", "🪃", "🥍",
 ]
 TRIPLE_EMOJIS = ["⚽️", "🪩", "🏀"]
-
-
-class EmojiStates(StatesGroup):
-    waiting_for_assign = State()
-
 
 async def _fetch_user_emojis(user_id: int) -> List[str]:
     async with db.db_pool.acquire() as conn:

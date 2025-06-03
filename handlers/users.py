@@ -1,3 +1,5 @@
+# handlers/users.py
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
@@ -7,16 +9,7 @@ from aiogram.filters.command import Command
 import db
 from config import is_user_admin
 from handlers.language import get_user_language, get_message
-
-class UsersManagementStates(StatesGroup):
-    waiting_for_user_selection = State()
-    waiting_for_new_user_id = State()
-    waiting_for_delete_choice = State()
-    waiting_for_edit_choice = State()
-    waiting_for_new_name = State()
-    waiting_for_new_emoji = State()
-    waiting_for_balance_op = State()
-    waiting_for_balance_value = State()
+from handlers.states import UsersManagementStates
 
 users_router = Router()
 

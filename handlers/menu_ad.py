@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from utils.bot_utils import safe_answer
 from config import is_user_admin
 from handlers.language import get_user_language, get_message
-from states.admin_states import AdminStates
+from handlers.states import AdminStates
 
 from handlers.clean import cmd_clean, clean_via_button
 from handlers.salary import salary_command

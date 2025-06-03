@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from utils.bot_utils import safe_answer
 from constants.booking_const import GROUP_CHOICE_IMG, groups_data
-from app_states import BookUserStates
+from handlers.states import BookUserStates
 from handlers.language import get_user_language, get_message
 from handlers.booking.cancelbook import cmd_off  # ← универсальный /off
 

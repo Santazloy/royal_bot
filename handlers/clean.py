@@ -19,6 +19,7 @@ from config import is_user_admin
 from constants.booking_const import groups_data
 from handlers.language import get_user_language, get_message
 from handlers.booking.reporting import update_group_message
+from handlers.states import CleanupStates
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -66,13 +67,6 @@ async def safe_answer(entity, text: str | None = None, **kwargs):
     )
     last_bot_message[chat_id] = sent.message_id
     return sent
-
-
-class CleanupStates(StatesGroup):
-    waiting_for_main_menu    = State()
-    waiting_for_group_choice = State()
-    waiting_for_confirmation = State()
-
 
 @router.message(Command("clean"))
 @router.callback_query(F.data == "clean")

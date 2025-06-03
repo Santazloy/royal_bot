@@ -7,7 +7,7 @@ from utils.bot_utils import safe_answer
 from handlers.language import get_user_language, get_message
 from handlers.group_id import show_group_id
 from handlers.ai import list_models_for_menu
-from handlers.idphoto import IDPhotoStates
+from handlers.states import IDPhotoStates
 
 leonard_menu_router = Router()
 PHOTO_ID = "photo/IMG_2585.JPG"
