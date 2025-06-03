@@ -29,22 +29,28 @@ async def cmd_menu(message: Message):
             message,
             photo=MENU_PHOTO_ID,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=get_message(lang, "menu_btn_booking"),
-                    callback_data="menu_stub|booking"
-                )],
-                [InlineKeyboardButton(
-                    text=get_message(lang, "menu_btn_schedule"),
-                    callback_data="view_all_bookings"
-                ),
-                 InlineKeyboardButton(
-                    text=get_message(lang, "menu_btn_balance"),
-                    callback_data="menu_stub|balance"
-                 )],
-                [InlineKeyboardButton(
-                    text=get_message(lang, "menu_btn_cancel_booking"),
-                    callback_data="menu_stub|cancel_booking"
-                 )],
+                [
+                    InlineKeyboardButton(
+                        text=get_message(lang, "menu_btn_booking"),
+                        callback_data="menu_stub|booking"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=get_message(lang, "menu_btn_schedule"),
+                        callback_data="view_all_bookings"
+                    ),
+                    InlineKeyboardButton(
+                        text=get_message(lang, "menu_btn_balance"),
+                        callback_data="menu_stub|balance"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=get_message(lang, "menu_btn_cancel_booking"),
+                        callback_data="menu_stub|cancel_booking"
+                    )
+                ],
             ])
         )
     except Exception as e:
@@ -55,9 +61,13 @@ async def cmd_menu(message: Message):
 @menu_router.callback_query(F.data == "menu_stub|booking")
 async def on_menu_stub_booking(cb: CallbackQuery, state: FSMContext):
     lang = await get_user_language(cb.from_user.id)
+
     rows, buf = [], []
     for i, gk in enumerate(groups_data, 1):
-        buf.append(InlineKeyboardButton(text=gk, callback_data=f"bkgrp_{gk}"))
+        buf.append(InlineKeyboardButton(
+            text=gk,
+            callback_data=f"bkgrp_{gk}"
+        ))
         if i % 3 == 0:
             rows.append(buf)
             buf = []

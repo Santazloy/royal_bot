@@ -1,3 +1,5 @@
+# handlers/menu_ad.py
+
 import logging
 from aiogram import Router
 from aiogram.types import Message, CallbackQuery
@@ -16,23 +18,23 @@ from handlers.startemoji import cmd_emoji
 from handlers.money import money_command
 from handlers.booking.cancelbook import cmd_off_admin
 from handlers.leonard import leonard_menu_callback
-from handlers.users import show_users_via_callback  # ← добавлено
+from handlers.users import show_users_via_callback
 
 last_admin_menu_message: dict[int, int] = {}
 
 PHOTO_ID = "photo/IMG_2585.JPG"
 EMOJI_MAP = {
-    "salary": "💰",
-    "emoji": "😊",
-    "money": "💵",
-    "offad": "❌",
-    "clean": "🧹",
-    "balances": "📊",
-    "rules": "📜",
+    "leonard":    "🐆",
+    "salary":     "💰",
+    "emoji":      "😊",
+    "money":      "💵",
+    "offad":      "❌",
+    "clean":      "🧹",
+    "balances":   "📊",
+    "rules":      "📜",
     "conversion": "🔄",
-    "reset_day": "🔁",
-    "back": "🔙",
-    "leonard": "🐆",
+    "reset_day":  "🔁",
+    "back":       "🔙",
 }
 
 logger = logging.getLogger(__name__)
@@ -41,17 +43,17 @@ menu_ad_router = Router()
 
 def build_admin_menu_keyboard(lang: str):
     buttons = [
-        (get_message(lang, "menu_leonard", default="Леонард"), "leonard"),
-        (get_message(lang, "btn_salary"), "salary"),
-        (get_message(lang, "btn_emoji"), "emoji"),
-        (get_message(lang, "btn_money"), "money"),
-        (get_message(lang, "btn_cancel_booking"), "offad"),
-        (get_message(lang, "btn_clean"), "clean"),
-        (get_message(lang, "btn_balances"), "balances"),
-        (get_message(lang, "btn_rules"), "rules"),
-        (get_message(lang, "btn_conversion"), "conversion"),
-        (get_message(lang, "btn_reset_day"), "reset_day"),
-        (get_message(lang, "btn_back"), "back"),
+        (get_message(lang, "menu_leonard",      default="Леонард"),      "leonard"),
+        (get_message(lang, "btn_salary",        default="Зарплата"),     "salary"),
+        (get_message(lang, "btn_emoji",         default="Эмодзи"),       "emoji"),
+        (get_message(lang, "btn_money",         default="Деньги"),       "money"),
+        (get_message(lang, "btn_cancel_booking",default="Отмена брони"), "offad"),
+        (get_message(lang, "btn_clean",         default="Очистка"),      "clean"),
+        (get_message(lang, "btn_balances",      default="Балансы"),      "balances"),
+        (get_message(lang, "btn_rules",         default="Правила"),      "rules"),
+        (get_message(lang, "btn_conversion",    default="Конвертация"),  "conversion"),
+        (get_message(lang, "btn_reset_day",     default="Сброс дня"),    "reset_day"),
+        (get_message(lang, "btn_back",          default="« Назад"),      "back"),
     ]
     builder = InlineKeyboardBuilder()
     for text, data in buttons:
@@ -73,6 +75,7 @@ async def show_admin_menu(message: Message, state: FSMContext):
             await message.bot.delete_message(chat_id=chat_id, message_id=prev_id)
         except:
             pass
+
     kb = build_admin_menu_keyboard(lang)
     sent = await safe_answer(
         message,
@@ -88,8 +91,10 @@ async def show_admin_menu(message: Message, state: FSMContext):
 async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     action = callback.data
+
     if not is_user_admin(callback.from_user.id):
         return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
+
     if action == "leonard":
         return await leonard_menu_callback(callback, state)
     if action == "salary":
@@ -103,11 +108,12 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     if action == "clean":
         return await clean_via_button(callback, state)
     if action == "balances":
-        return await show_users_via_callback(callback, state)  # ← изменено
+        return await show_users_via_callback(callback, state)
     if action in ("rules", "conversion", "reset_day"):
         key = f"menu_{action}_header"
         return await safe_answer(callback, get_message(lang, key, default="Не реализовано"))
     if action == "back":
         await safe_answer(callback, get_message(lang, "menu_back_confirm", default="Выход из админ-меню."))
         return await state.clear()
+
     return await safe_answer(callback, get_message(lang, "menu_unknown_command", default="Неизвестная команда."))
