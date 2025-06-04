@@ -12,6 +12,7 @@ from constants.booking_const import GROUP_CHOICE_IMG, groups_data
 from handlers.states import BookUserStates
 from handlers.language import get_user_language, get_message
 from handlers.booking.cancelbook import cmd_off  # ← универсальный /off
+from handlers.language import cmd_lang  # ← импорт функции для выбора языка
 
 menu_router = Router()
 
@@ -47,6 +48,12 @@ async def cmd_menu(message: Message):
                     InlineKeyboardButton(
                         text=get_message(lang, "menu_btn_cancel_booking"),
                         callback_data="menu_stub|cancel_booking"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🇷🇺🇨🇳🇺🇸",
+                        callback_data="menu_lang"
                     )
                 ],
             ])
@@ -124,6 +131,24 @@ async def on_menu_stub_cancel_booking(cb: CallbackQuery, state: FSMContext):
 
     await cb.answer()          # убираем «часики» на кнопке
     await cmd_off(cb)          # ← универсальный вызов /off
+
+
+# ───────────────────   меню → «Выбор языка»  ─────────────────────────────────
+@menu_router.callback_query(F.data == "menu_lang")
+async def on_menu_lang(cb: CallbackQuery):
+    # Игнорируем колбэки от самого бота
+    me = await cb.bot.get_me()
+    if cb.from_user.id == me.id:
+        return
+
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
+
+    await cb.answer()
+    # Вызываем команду /lang
+    await cmd_lang(cb.message)
 
 
 # ─────────────────────────   обработка ненайденных menu_stub  ─────────────────────────
