@@ -1,4 +1,3 @@
-# handlers/booking/reporting.py
 from aiogram import F
 from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
@@ -20,6 +19,7 @@ from aiogram import Router
 router = Router()
 
 logger = logging.getLogger(__name__)
+
 
 async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
     username = f"User {uid}"
@@ -51,6 +51,7 @@ async def send_booking_report(bot: Bot, uid: int, gk: str, slot: str, day: str):
         text=f"<pre>{body}</pre>",
         parse_mode=ParseMode.HTML,
     )
+
 
 async def update_group_message(bot: Bot, group_key: str):
     ginfo = groups_data[group_key]
@@ -111,6 +112,7 @@ async def update_group_message(bot: Bot, group_key: str):
                 msg.message_id, group_key
             )
 
+
 async def send_financial_report(bot: Bot):
     if not db.db_pool:
         return
@@ -142,8 +144,10 @@ async def send_financial_report(bot: Bot):
     if rows:
         lines.append("═════ 👥 Пользователи 👥 ═════\n")
         for r in rows:
+            emoji = r.get("emojis") or "❓"
             uname = r["username"] or f"User {r['user_id']}"
-            lines += [f"{(r['emoji'] or '❓')} {uname}: {r['balance']}¥",
+            balance = r["balance"]
+            lines += [f"{emoji} {uname}: {balance}¥",
                       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"]
 
     lines += [
@@ -156,6 +160,7 @@ async def send_financial_report(bot: Bot):
         await bot.send_message(FINANCIAL_REPORT_GROUP_ID, report, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Ошибка фин. отчёта: {e}")
+
 
 @router.callback_query(F.data == "view_all_bookings")
 async def cmd_all(cb: CallbackQuery):
@@ -191,7 +196,6 @@ async def cmd_all(cb: CallbackQuery):
         ]
         for gk, td in group_times.items():
             for s in td.get(day, []):
-                # отобразить эмодзи если есть
                 emoji = groups_data[gk].get("slot_emojis", {}).get((day, s), "❓")
                 lines.append(f"║ {gk:<9}║ {s:<18}║ {emoji}")
             lines.append("╠══════════╬════════════════════╣")
@@ -204,6 +208,7 @@ async def cmd_all(cb: CallbackQuery):
     except TelegramBadRequest:
         await safe_delete_and_answer(cb.message, text)
     await cb.answer()
+
 
 async def safe_delete_and_answer(msg: Message, text: str):
     try:

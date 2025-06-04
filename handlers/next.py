@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import html
 from typing import Dict
 
 from aiogram import Router
@@ -16,6 +17,7 @@ from utils.bot_utils import safe_answer
 from constants.booking_const import groups_data
 from handlers.booking.reporting import update_group_message
 
+from constants.salary import salary_options
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -26,10 +28,11 @@ async def do_next_core(bot):
     """
     Общая логика сброса дня и отправки отчётов:
     1) Собираем отчёт за «Сегодня», отправляем в FINANCIAL_REPORT_GROUP_ID.
-    2) Удаляем все записи "Сегодня" из таблиц bookings и group_time_slot_statuses.
-    3) Очищаем in‐memory для «Сегодня».
-    4) Переносим «Завтра»→«Сегодня» в БД и in‐memory.
-    5) Обновляем групповое сообщение для каждой группы.
+    2) Отправляем отчёты для каждой группы (заработок за день и сумму наличных за день).
+    3) Удаляем все записи "Сегодня" из таблиц bookings и group_time_slot_statuses.
+    4) Очищаем in‐memory для «Сегодня».
+    5) Переносим «Завтра»→«Сегодня» в БД и in‐memory.
+    6) Обновляем групповое сообщение для каждой группы.
     """
     async with db.db_pool.acquire() as conn:
         # 1) Сбор данных за «Сегодня»
@@ -42,16 +45,35 @@ async def do_next_core(bot):
 
         user_bookings_count: Dict[int, int] = {}
 
+        # Подготовка структуры для отчёта по группам
+        group_reports = {
+            gk: {
+                "salary_sum": 0,
+                "cash_sum": 0,
+            }
+            for gk in groups_data.keys()
+        }
+
         for b in today_bookings:
             pm = b["payment_method"]
             amt = b["amount"] or 0
             uid = b["user_id"]
+            gk = b["group_key"]
+            status = b.get("status") or ""
 
             user_bookings_count[uid] = user_bookings_count.get(uid, 0) + 1
 
+            # Рассчитываем зарплату для этой брони (по статусу)
+            opt = groups_data.get(gk, {}).get("salary_option", 1)
+            base_salary = salary_options.get(opt, {}).get(status, 0)
+            group_reports.setdefault(gk, {"salary_sum": 0, "cash_sum": 0})
+            group_reports[gk]["salary_sum"] += base_salary
+
+            # Считаем наличные за оплату "cash"
             if pm == "cash":
                 cash_count += 1
                 cash_sum += amt
+                group_reports[gk]["cash_sum"] += amt
             elif pm == "beznal":
                 beznal_count += 1
                 beznal_sum += amt
@@ -92,60 +114,82 @@ async def do_next_core(bot):
         except Exception as e:
             logger.error("Не удалось отправить финансовый отчет в группу: %s", e)
 
-        # 5) Удаляем все записи «Сегодня»
+        # 5) Отправляем отчёты для каждой группы
+        for gk, data in group_reports.items():
+            ginfo = groups_data.get(gk)
+            if not ginfo:
+                continue
+            chat_id = ginfo["chat_id"]
+            salary_sum = data["salary_sum"]
+            cash_sum_grp = data["cash_sum"]
+
+            group_report_lines = [
+                f"📊 <b>Отчет по группе {html.escape(gk)} за сегодня</b>",
+                f"💰 Заработок за день: {salary_sum}¥",
+                f"💵 Наличные за день: {cash_sum_grp}¥",
+            ]
+            group_report_text = "\n".join(group_report_lines)
+
+            try:
+                await bot.send_message(chat_id, group_report_text, parse_mode=ParseMode.HTML)
+            except Exception as e:
+                logger.warning("Не удалось отправить отчёт группе %s: %s", gk, e)
+
+        # 6) Удаляем все записи «Сегодня»
         await conn.execute("DELETE FROM bookings WHERE day = 'Сегодня'")
         await conn.execute("DELETE FROM group_time_slot_statuses WHERE day = 'Сегодня'")
 
-        # 6) Очищаем in‐memory структуры для «Сегодня»
-        for gk, ginfo in groups_data.items():
-            ginfo["booked_slots"]["Сегодня"] = []
-            ginfo["unavailable_slots"]["Сегодня"] = set()
-            ginfo["time_slot_statuses"] = {
-                (d, ts): st
-                for ((d, ts), st) in ginfo["time_slot_statuses"].items()
-                if d != "Сегодня"
-            }
-            ginfo["slot_bookers"] = {
-                (d, ts): u
-                for ((d, ts), u) in ginfo["slot_bookers"].items()
-                if d != "Сегодня"
-            }
+    # 7) Очищаем in‐memory структуры для «Сегодня»
+    for gk, ginfo in groups_data.items():
+        ginfo["booked_slots"]["Сегодня"] = []
+        ginfo["unavailable_slots"]["Сегодня"] = set()
+        ginfo["time_slot_statuses"] = {
+            (d, ts): st
+            for ((d, ts), st) in ginfo["time_slot_statuses"].items()
+            if d != "Сегодня"
+        }
+        ginfo["slot_bookers"] = {
+            (d, ts): u
+            for ((d, ts), u) in ginfo["slot_bookers"].items()
+            if d != "Сегодня"
+        }
 
-        # 7) Переносим «Завтра» → «Сегодня» в БД
+    async with db.db_pool.acquire() as conn:
+        # 8) Переносим «Завтра» → «Сегодня» в БД
         await conn.execute("UPDATE bookings SET day = 'Сегодня' WHERE day = 'Завтра'")
         await conn.execute("UPDATE group_time_slot_statuses SET day = 'Сегодня' WHERE day = 'Завтра'")
 
-        # 8) Обновляем in‐memory структуры для переноса
-        for gk, ginfo in groups_data.items():
-            # переносим списки «Завтра» → «Сегодня»
-            ginfo["booked_slots"]["Сегодня"] = ginfo["booked_slots"].get("Завтра", [])
-            ginfo["unavailable_slots"]["Сегодня"] = ginfo["unavailable_slots"].get("Завтра", set())
-            ginfo["booked_slots"]["Завтра"] = []
-            ginfo["unavailable_slots"]["Завтра"] = set()
+    # 9) Обновляем in‐memory структуры для переноса
+    for gk, ginfo in groups_data.items():
+        # переносим списки «Завтра» → «Сегодня»
+        ginfo["booked_slots"]["Сегодня"] = ginfo["booked_slots"].get("Завтра", [])
+        ginfo["unavailable_slots"]["Сегодня"] = ginfo["unavailable_slots"].get("Завтра", set())
+        ginfo["booked_slots"]["Завтра"] = []
+        ginfo["unavailable_slots"]["Завтра"] = set()
 
-            # пересобираем состояния
-            new_tss = {}
-            for (d, ts), st in ginfo["time_slot_statuses"].items():
-                if d == "Завтра":
-                    new_tss[("Сегодня", ts)] = st
-                else:
-                    new_tss[(d, ts)] = st
-            ginfo["time_slot_statuses"] = new_tss
+        # пересобираем состояния
+        new_tss = {}
+        for (d, ts), st in ginfo["time_slot_statuses"].items():
+            if d == "Завтра":
+                new_tss[("Сегодня", ts)] = st
+            else:
+                new_tss[(d, ts)] = st
+        ginfo["time_slot_statuses"] = new_tss
 
-            new_sb = {}
-            for (d, ts), u in ginfo["slot_bookers"].items():
-                if d == "Завтра":
-                    new_sb[("Сегодня", ts)] = u
-                else:
-                    new_sb[(d, ts)] = u
-            ginfo["slot_bookers"] = new_sb
+        new_sb = {}
+        for (d, ts), u in ginfo["slot_bookers"].items():
+            if d == "Завтра":
+                new_sb[("Сегодня", ts)] = u
+            else:
+                new_sb[(d, ts)] = u
+        ginfo["slot_bookers"] = new_sb
 
-        # 9) Обновляем групповое сообщение для каждой группы
-        for gk in groups_data.keys():
-            try:
-                await update_group_message(bot, gk)
-            except Exception as e:
-                logger.warning("Не удалось обновить групповое сообщение для %s: %s", gk, e)
+    # 10) Обновляем групповое сообщение для каждой группы
+    for gk in groups_data.keys():
+        try:
+            await update_group_message(bot, gk)
+        except Exception as e:
+            logger.warning("Не удалось обновить групповое сообщение для %s: %s", gk, e)
 
 
 @router.message(Command("next"))

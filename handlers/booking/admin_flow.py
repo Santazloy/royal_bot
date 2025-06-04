@@ -3,14 +3,19 @@ from aiogram.types import CallbackQuery
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardMarkup, InlineKeyboardButton
+import logging
 
 from constants.booking_const import status_mapping, groups_data
 from handlers.booking.reporting import update_group_message
 from utils.bot_utils import safe_answer
 from aiogram import Router
-router = Router()
 
+from handlers.booking.rewards import apply_special_user_reward
+
+router = Router()
+logger = logging.getLogger(__name__)
 PHOTO_ID = "photo/IMG_2585.JPG"
+
 
 @router.callback_query(F.data.startswith("group_time|"))
 async def admin_click_slot(cb: CallbackQuery):
@@ -23,27 +28,33 @@ async def admin_click_slot(cb: CallbackQuery):
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Только админ!", show_alert=True)
 
-    # Удалить прошлое сообщение (если возможно)
     try:
         await cb.message.delete()
     except Exception:
         pass
 
-    # Красивые кнопки статуса: две строки, например 3+2 (или сколько есть)
     codes = list(status_mapping.items())
     status_buttons = [
-        [InlineKeyboardButton(
-            text=emoji,
-            callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
-        ) for code, emoji in codes[:3]],
-        [InlineKeyboardButton(
-            text=emoji,
-            callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
-        ) for code, emoji in codes[3:]],
-        [InlineKeyboardButton(
-            text="« Назад",
-            callback_data=f"group_status|{gk}|{day}|{slot}|back"
-        )]
+        [
+            InlineKeyboardButton(
+                text=emoji,
+                callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
+            )
+            for code, emoji in codes[:3]
+        ],
+        [
+            InlineKeyboardButton(
+                text=emoji,
+                callback_data=f"group_status|{gk}|{day}|{slot}|{code}"
+            )
+            for code, emoji in codes[3:]
+        ],
+        [
+            InlineKeyboardButton(
+                text="« Назад",
+                callback_data=f"group_status|{gk}|{day}|{slot}|back"
+            )
+        ]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=status_buttons)
 
@@ -69,7 +80,6 @@ async def admin_click_status(cb: CallbackQuery):
     if member.status not in ("administrator", "creator"):
         return await cb.answer("Нет прав!", show_alert=True)
 
-    # Удалить прошлое сообщение (если возможно)
     try:
         await cb.message.delete()
     except Exception:
@@ -80,12 +90,12 @@ async def admin_click_status(cb: CallbackQuery):
         return await cb.answer()
 
     if code == "-1":
-        # Отмена: убираем слот из памяти и из БД
         uid = ginfo["slot_bookers"].pop((day, slot), None)
         if uid and slot in ginfo["booked_slots"].get(day, []):
             ginfo["booked_slots"][day].remove(slot)
 
         from utils.time_utils import get_adjacent_time_slots
+
         adjs = get_adjacent_time_slots(slot)
         for adj in adjs:
             if adj in ginfo["unavailable_slots"][day]:
@@ -96,8 +106,7 @@ async def admin_click_status(cb: CallbackQuery):
 
         ginfo["time_slot_statuses"].pop((day, slot), None)
 
-        import db, logging
-        logger = logging.getLogger(__name__)
+        import db
         try:
             if db.db_pool:
                 async with db.db_pool.acquire() as con:
@@ -115,12 +124,10 @@ async def admin_click_status(cb: CallbackQuery):
         await update_group_message(cb.bot, gk)
         return await safe_answer(cb, "Слот отменён.", photo=PHOTO_ID)
 
-    # Устанавливаем финальный статус
     emoji = status_mapping.get(code)
     ginfo["time_slot_statuses"][(day, slot)] = emoji
 
-    import db, logging
-    logger = logging.getLogger(__name__)
+    import db
     try:
         if db.db_pool:
             async with db.db_pool.acquire() as con:
@@ -141,14 +148,32 @@ async def admin_click_status(cb: CallbackQuery):
     except Exception as e:
         logger.error(f"DB error: {e}")
 
-    # Предлагаем способ оплаты, все кнопки — в своих строках
-    from handlers.booking.rewards import apply_special_user_reward
-    await apply_special_user_reward(code, cb.bot)
+    try:
+        await apply_special_user_reward(code, cb.bot)
+    except TelegramBadRequest as e:
+        logger.warning(f"admin_click_status: не удалось отправить reward: {e}")
+    except Exception as e:
+        logger.warning(f"admin_click_status: ошибка при apply_special_user_reward: {e}")
 
     pay_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="наличные", callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash")],
-        [InlineKeyboardButton(text="безнал",   callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal")],
-        [InlineKeyboardButton(text="агент",    callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent")],
+        [
+            InlineKeyboardButton(
+                text="наличные",
+                callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|cash"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="безнал",
+                callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|beznal"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="агент",
+                callback_data=f"payment_method|{gk}|{day}|{slot}|{code}|agent"
+            )
+        ],
     ])
     await safe_answer(cb, "Выберите способ оплаты:", parse_mode=ParseMode.HTML, reply_markup=pay_kb, photo=PHOTO_ID)
     await cb.answer()
