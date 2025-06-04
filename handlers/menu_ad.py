@@ -87,7 +87,6 @@ async def show_admin_menu(message: Message, state: FSMContext):
     last_admin_menu_message[chat_id] = sent.message_id
     await state.set_state(AdminStates.menu)
 
-
 @menu_ad_router.callback_query(AdminStates.menu)
 async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
@@ -121,9 +120,13 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     if action == "balances":
         return await show_users_via_callback(callback, state)
 
-    if action in ("rules", "conversion"):
-        key = f"menu_{action}_header"
-        return await safe_answer(callback, get_message(lang, key, default="Не реализовано"))
+    if action == "rules":
+        from handlers.rules import callback_rules
+        return await callback_rules(callback)
+
+    if action == "conversion":
+        from handlers.exchange import callback_conversion
+        return await callback_conversion(callback, state)
 
     if action == "reset_day":
         return await callback_reset_day(callback, state)
