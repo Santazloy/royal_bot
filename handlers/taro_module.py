@@ -1,18 +1,27 @@
 # handlers/taro_module.py
-from aiogram import Router
+
 import os
 import random
 import openai
 import logging
 import html
 
+from aiogram import Router, types
+from aiogram.filters.command import Command
+from aiogram.types import FSInputFile
+
 logger = logging.getLogger(__name__)
 router = Router()
-# Папка с изображениями
+
+# ────────────────────────────── Настройки ──────────────────────────────
+
+# Папка с изображениями (JPEG-файлы должны лежать в handlers/TARO/)
 TARO_FOLDER = os.path.join(os.path.dirname(__file__), "TARO")
 REVERSED_CHANCE = 0.2
 
-# Словарь карт Таро Манара (из вашего кода)
+# ────────────────────────────── Колода карт ──────────────────────────────
+
+# Старшие арканы
 manara_cards = {
     "Шут.jpg": "Шут",
     "Маг.jpg": "Маг",
@@ -38,8 +47,7 @@ manara_cards = {
     "Мир.jpg": "Мир"
 }
 
-# Младшие арканы – каждая масть: Туз, 2..10, Слуга (Паж), Всадница (Рыцарь), Королева, Король.
-# Масть Воды
+# Младшие арканы: масти Воды, Воздуха, Земли, Огня
 manara_cards.update({
     "Туз_воды.jpg": "Туз Воды",
     "2_воды.jpg": "Двойка Воды",
@@ -56,8 +64,6 @@ manara_cards.update({
     "Королева_воды.jpg": "Королева Воды",
     "Король_воды.jpg": "Король Воды"
 })
-
-# Масть Воздуха
 manara_cards.update({
     "Туз_воздуха.jpg": "Туз Воздуха",
     "2_воздуха.jpg": "Двойка Воздуха",
@@ -74,8 +80,6 @@ manara_cards.update({
     "Королева_воздуха.jpg": "Королева Воздуха",
     "Король_воздуха.jpg": "Король Воздуха"
 })
-
-# Масть Земли
 manara_cards.update({
     "Туз_земли.jpg": "Туз Земли",
     "2_земли.jpg": "Двойка Земли",
@@ -92,8 +96,6 @@ manara_cards.update({
     "Королева_земли.jpg": "Королева Земли",
     "Король_земли.jpg": "Король Земли"
 })
-
-# Масть Огня
 manara_cards.update({
     "Туз_огня.jpg": "Туз Огня",
     "2_огня.jpg": "Двойка Огня",
@@ -112,7 +114,9 @@ manara_cards.update({
 })
 
 
-def draw_cards(cards_dict, count=3, reversed_chance=REVERSED_CHANCE):
+# ─────────────────────────── Вспомогательные функции ───────────────────────────
+
+def draw_cards(cards_dict: dict, count: int = 3, reversed_chance: float = REVERSED_CHANCE):
     """
     Случайно выбираем `count` карт из словаря cards_dict.
     Возвращаем список кортежей (имя_файла, название_карты, is_reversed).
@@ -128,8 +132,7 @@ def draw_cards(cards_dict, count=3, reversed_chance=REVERSED_CHANCE):
     return results
 
 
-def get_card_interpretation(card_name: str, position: str,
-                            is_reversed: bool) -> str:
+def get_card_interpretation(card_name: str, position: str, is_reversed: bool) -> str:
     """
     Запрашивает ChatCompletion у OpenAI для интерпретации карты `card_name`.
     position — "Прошлое", "Настоящее" или "Будущее".
@@ -144,23 +147,69 @@ def get_card_interpretation(card_name: str, position: str,
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o",  # Или другой доступный
-            messages=[{
-                "role":
-                "system",
-                "content":
-                ("Ты выступаешь экспертом по Таро Манара. "
-                 "Отвечай развёрнуто, дружелюбно и информативно, без излишнего мистицизма."
-                 )
-            }, {
-                "role": "user",
-                "content": prompt
-            }],
+            model="gpt-4o",  # Или любой другой доступный моделью
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Ты выступаешь экспертом по Таро Манара. "
+                        "Отвечай развёрнуто, дружелюбно и информативно, без излишнего мистицизма."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
             temperature=0.7,
-            max_tokens=2000)
+            max_tokens=2000
+        )
         answer_text = response.choices[0].message.content.strip()
     except Exception as e:
         logger.error(f"Ошибка при запросе к OpenAI: {e}")
         answer_text = "Извините, произошла ошибка при получении интерпретации."
 
     return answer_text
+
+
+# ─────────────────────────── Хендлер команды /tarot ───────────────────────────
+
+@router.message(Command("taro"))
+async def cmd_taro(message: types.Message):
+    """
+    Хендлер команды /taro:
+    — вытягивает 3 карты и отправляет их в чат (с подписью);
+    — после каждого рисунка отправляет текст интерпретации.
+    """
+    try:
+        cards = draw_cards(manara_cards, count=3, reversed_chance=REVERSED_CHANCE)
+    except ValueError as e:
+        await message.answer(f"Ошибка: {e}")
+        return
+
+    positions = ["Прошлое", "Настоящее", "Будущее"]
+
+    for i, (fname, card_name, is_rev) in enumerate(cards):
+        pos_text = positions[i]
+        orientation = " (перевёрнутая)" if is_rev else ""
+        caption = f"{pos_text}: {card_name}{orientation}"
+        full_path = os.path.join(TARO_FOLDER, fname)
+
+        # Получаем текст интерпретации через OpenAI
+        interpretation = get_card_interpretation(card_name, pos_text, is_rev)
+
+        # Пробуем отправить фотографию карты
+        try:
+            photo = FSInputFile(full_path)
+            await message.answer_photo(photo=photo, caption=caption)
+        except FileNotFoundError:
+            # Если файл не найден, отправляем подпись + текст интерпретации в Markdown
+            await message.answer(
+                f"**Не найден файл изображения**: {full_path}\n\n"
+                f"{caption}\n\n{interpretation}",
+                parse_mode="Markdown"
+            )
+            continue
+
+        # Отправляем текст интерпретации (в HTML-виде)
+        await message.answer(f"<pre>{html.escape(interpretation)}</pre>", parse_mode="HTML")
