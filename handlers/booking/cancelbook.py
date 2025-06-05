@@ -1,3 +1,5 @@
+# handlers/booking/cancelbook.py
+
 import logging
 
 from aiogram import Router, F
@@ -6,7 +8,7 @@ from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
 
 from utils.bot_utils import safe_answer
-from handlers.language import get_user_language, get_message
+import handlers.language as lang_mod        # <--- import the entire handlers.language module
 import db
 from constants.booking_const import groups_data
 from handlers.booking.reporting import update_group_message
@@ -37,17 +39,18 @@ async def cmd_off(event):
     else:
         return  # неизвестный тип события
 
-    lang = await get_user_language(uid)
+    # Получаем язык (тесты перехватят lang_mod.get_user_language)
+    lang = await lang_mod.get_user_language(uid)
 
     # Если база данных ещё не инициализирована
     if not db.db_pool:
         return await safe_answer(
             answer_target,
-            get_message(lang, "db_not_initialized"),
+            lang_mod.get_message(lang, "db_not_initialized"),
             photo=PHOTO_ID
         )
 
-    # Берём из БД все строки для текущего user_id без учёта поля status
+    # Берём из БД все строки для текущего user_id (без статуса)
     async with db.db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
@@ -63,7 +66,7 @@ async def cmd_off(event):
     if not rows:
         return await safe_answer(
             answer_target,
-            get_message(lang, "no_active_bookings"),
+            lang_mod.get_message(lang, "no_active_bookings"),
             photo=PHOTO_ID
         )
 
@@ -80,7 +83,7 @@ async def cmd_off(event):
 
     await safe_answer(
         answer_target,
-        get_message(lang, "off_choose_booking"),
+        lang_mod.get_message(lang, "off_choose_booking"),
         photo=PHOTO_ID,
         reply_markup=kb
     )
@@ -96,13 +99,13 @@ async def cmd_off_message(message: Message):
 @router.message(Command("offad"))
 async def cmd_off_admin(message: Message):
     uid = message.from_user.id
-    lang = await get_user_language(uid)
+    lang = await lang_mod.get_user_language(uid)
 
     # Если база данных ещё не инициализирована
     if not db.db_pool:
         return await safe_answer(
             message,
-            get_message(lang, "db_not_initialized"),
+            lang_mod.get_message(lang, "db_not_initialized"),
             photo=PHOTO_ID
         )
 
@@ -118,7 +121,7 @@ async def cmd_off_admin(message: Message):
     if not rows:
         return await safe_answer(
             message,
-            get_message(lang, "no_active_bookings"),
+            lang_mod.get_message(lang, "no_active_bookings"),
             photo=PHOTO_ID
         )
 
@@ -134,7 +137,7 @@ async def cmd_off_admin(message: Message):
 
     await safe_answer(
         message,
-        get_message(lang, "off_choose_booking"),
+        lang_mod.get_message(lang, "off_choose_booking"),
         photo=PHOTO_ID,
         reply_markup=kb
     )
@@ -149,7 +152,7 @@ async def off_cancel_user(callback: CallbackQuery, state: FSMContext):
         return
 
     uid = callback.from_user.id
-    lang = await get_user_language(uid)
+    lang = await lang_mod.get_user_language(uid)
     bid = int(callback.data.removeprefix("off_cancel_user_"))
 
     async with db.db_pool.acquire() as conn:
@@ -164,7 +167,7 @@ async def off_cancel_user(callback: CallbackQuery, state: FSMContext):
         if not row:
             return await safe_answer(
                 callback,
-                get_message(lang, "no_such_booking"),
+                lang_mod.get_message(lang, "no_such_booking"),
                 show_alert=True
             )
 
@@ -196,7 +199,7 @@ async def off_cancel_user(callback: CallbackQuery, state: FSMContext):
     await update_group_message(callback.bot, gk)
     await safe_answer(
         callback,
-        get_message(lang, "booking_cancelled"),
+        lang_mod.get_message(lang, "booking_cancelled"),
         show_alert=True
     )
 
@@ -209,7 +212,7 @@ async def off_cancel_admin(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id == me.id:
         return
 
-    lang = await get_user_language(callback.from_user.id)
+    lang = await lang_mod.get_user_language(callback.from_user.id)
     bid = int(callback.data.removeprefix("off_cancel_admin_"))
 
     async with db.db_pool.acquire() as conn:
@@ -224,7 +227,7 @@ async def off_cancel_admin(callback: CallbackQuery, state: FSMContext):
         if not row:
             return await safe_answer(
                 callback,
-                get_message(lang, "no_such_booking"),
+                lang_mod.get_message(lang, "no_such_booking"),
                 show_alert=True
             )
 
@@ -235,6 +238,6 @@ async def off_cancel_admin(callback: CallbackQuery, state: FSMContext):
     await update_group_message(callback.bot, gk)
     await safe_answer(
         callback,
-        get_message(lang, "booking_cancelled_by_admin"),
+        lang_mod.get_message(lang, "booking_cancelled_by_admin"),
         show_alert=True
     )

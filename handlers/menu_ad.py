@@ -92,47 +92,61 @@ async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     action = callback.data
 
+    # Игнорируем нашу же кнопку
     me = await callback.bot.get_me()
     if callback.from_user.id == me.id:
         return
 
+    # Проверка прав
     if not is_user_admin(callback.from_user.id):
         return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
 
+    # Леонард
     if action == "leonard":
         return await leonard_menu_callback(callback, state)
 
+    # Зарплата
     if action == "salary":
         return await salary_command(callback.message, state)
 
+    # Эмодзи
     if action == "emoji":
         return await cmd_emoji(callback, callback.bot)
 
+    # Деньги
     if action == "money":
         return await money_command(callback.message, state)
 
+    # Отмена чужих бронирований
     if action == "offad":
         return await cmd_off_admin(callback.message)
 
+    # Очистка
     if action == "clean":
         return await clean_via_button(callback, state)
 
+    # Список балансов пользователей
     if action == "balances":
         return await show_users_via_callback(callback, state)
 
+    # Правила (отправляем два сообщения)
     if action == "rules":
         from handlers.rules import callback_rules
         return await callback_rules(callback)
 
+    # Конвертация (валютный калькулятор)
     if action == "conversion":
         from handlers.exchange import callback_conversion
         return await callback_conversion(callback, state)
 
+    # Сброс дня
     if action == "reset_day":
         return await callback_reset_day(callback, state)
 
+    # Назад (выход из админ-меню)
     if action == "back":
         await safe_answer(callback, get_message(lang, "menu_back_confirm", default="Выход из админ-меню."))
         return await state.clear()
 
+    # Любая другая неизвестная кнопка
     return await safe_answer(callback, get_message(lang, "menu_unknown_command", default="Неизвестная команда."))

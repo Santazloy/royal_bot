@@ -21,11 +21,13 @@ from handlers.menu_ad import menu_ad_router
 from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
 from handlers.file import router as file_router
-from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
+#from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
 from handlers.ai import router as ai_router
 from handlers.rules import router as rules_router
 from handlers.exchange import router as exchange_router
 
+# ← импортируем наш новый роутер
+from handlers.taro_module import router as tarot_router
 
 # Импортируем next_router и функцию планировщика
 from handlers.next import router as next_router, register_daily_scheduler
@@ -65,10 +67,9 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
-    # Регистрация on_startup для GPT
-    dp.startup.register(gpt_on_startup)
+    #dp.startup.register(gpt_on_startup)
 
-    # Подключение роутеров
+    # Подключаем все роутеры
     logger.debug("Подключение роутеров...")
     dp.include_router(language_router)
     dp.include_router(next_router)           # роутер из handlers/next.py
@@ -87,10 +88,12 @@ async def main():
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
     dp.include_router(file_router)
-    dp.include_router(gpt_router)
+    # dp.include_router(gpt_router)
+    # И наконец подключаем наш Tarot-роутер:
+    dp.include_router(tarot_router)
     logger.info("Все роутеры успешно подключены.")
 
-    # Регистрируем фоновый таск, выполняющий do_next_core в 03:00 Asia/Shanghai
+    # Регистрируем фоновый таск (handlers/next.py)
     register_daily_scheduler(dp, bot)
 
     # Установка команд бота
@@ -106,15 +109,16 @@ async def main():
         BotCommand(command="/money", description="Изменить зарплату/наличные"),
         BotCommand(command="/off", description="Отменить свою бронь"),
         BotCommand(command="/offad", description="Отмена чужих бронирований (админ)"),
-        BotCommand(command="/ad", description="Открыть админ‐меню"),
+        BotCommand(command="/ad", description="Открыть админ-меню"),
         BotCommand(command="/users", description="Управление пользователями"),
         BotCommand(command="/gpt_init", description="Инициализировать таблицу памяти GPT"),
         BotCommand(command="/generate", description="Сгенерировать изображение по запросу"),
+        BotCommand(command="/tarot", description="Вытянуть 3 карты Таро Манара")
     ]
     await bot.set_my_commands(commands)
     logger.info("Команды бота успешно установлены.")
 
-    # Удаляем webhook (если был) и запускаем polling
+    # Удаляем webhook (если установлен) и запускаем polling
     logger.debug("Удаление webhook (если установлен)...")
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook удалён. Ждем 2 секунды...")
