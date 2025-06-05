@@ -5,13 +5,15 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from aiogram.fsm.storage.memory import MemoryStorage
+
 from config import TELEGRAM_BOT_TOKEN
 import db
 
+# Импортируем «сборные» роутеры
 from handlers.group_id import router as group_id_router
 from handlers.idphoto import router as idphoto_router
 from handlers.startemoji import router as startemoji_router
-from handlers.booking.router import router as booking_router
+from handlers.booking.router import router as booking_router     # <<< единственный вызов всех booking-хендлеров
 from handlers.salary import salary_router, load_salary_data_from_db
 from handlers.menu import menu_router
 from handlers.clean import router as clean_router
@@ -21,15 +23,10 @@ from handlers.menu_ad import menu_ad_router
 from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
 from handlers.file import router as file_router
-#from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
+# from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
 from handlers.ai import router as ai_router
 from handlers.rules import router as rules_router
 from handlers.exchange import router as exchange_router
-
-# ← импортируем наш новый роутер
-from handlers.taro_module import router as tarot_router
-
-# Импортируем next_router и функцию планировщика
 from handlers.next import router as next_router, register_daily_scheduler
 
 from db_access.booking_repo import BookingRepo
@@ -44,39 +41,46 @@ async def main():
 
     logger.info("Запуск приложения...")
 
-    # Инициализация базы данных
+    # 1) Инициализация базы данных
     logger.debug("Инициализация подключения к базе данных...")
     await db.init_db_pool()
     await db.create_tables()
     logger.info("База данных и таблицы успешно инициализированы.")
 
-    # Загрузка данных бронирований
+    # 2) Загрузка данных бронирований в память
     logger.debug("Загрузка данных бронирований...")
     repo = BookingRepo(db.db_pool)
     await repo.load_data()
-    logger.info("Слоты и статусы загружены из БД.")
+    logger.info("Слоты и статусы успешно загружены из БД.")
 
-    # Загрузка настроек salary
+    # 3) Загрузка настроек salary
     logger.debug("Загрузка настроек salary из БД...")
     await load_salary_data_from_db()
     logger.info("Настройки salary успешно загружены из БД.")
 
-    # Создание Bot и Dispatcher
+    # 4) Создание Bot и Dispatcher
     logger.debug("Создание экземпляра бота и диспетчера...")
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
-    #dp.startup.register(gpt_on_startup)
+    # 5) Регистрируем on_startup-хендлер GPT (если нужен)
+    # dp.startup.register(gpt_on_startup)
 
-    # Подключаем все роутеры
+    # 6) Подключаем роутеры в нужном порядке:
     logger.debug("Подключение роутеров...")
+
+    # ─────── сначала «точечные» роутеры, которые не ловят свободный текст:
     dp.include_router(language_router)
-    dp.include_router(next_router)           # роутер из handlers/next.py
+    dp.include_router(next_router)
     dp.include_router(group_id_router)
     dp.include_router(idphoto_router)
     dp.include_router(startemoji_router)
+
+    # ─────── затем **booking_router** (FSM-flow бронирования):
     dp.include_router(booking_router)
+
+    # ─────── дальше идут остальные «общие» роутеры:
     dp.include_router(salary_router)
     dp.include_router(leonard_menu_router)
     dp.include_router(rules_router)
@@ -88,15 +92,13 @@ async def main():
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
     dp.include_router(file_router)
-    # dp.include_router(gpt_router)
-    # И наконец подключаем наш Tarot-роутер:
-    dp.include_router(tarot_router)
+    # dp.include_router(gpt_router)  # если нужен роутер GPT
     logger.info("Все роутеры успешно подключены.")
 
-    # Регистрируем фоновый таск (handlers/next.py)
+    # 7) Регистрируем планировщик (из handlers/next.py)
     register_daily_scheduler(dp, bot)
 
-    # Установка команд бота
+    # 8) Устанавливаем список команд бота (меню команд):
     logger.debug("Установка команд бота...")
     commands = [
         BotCommand(command="/start", description="Начать"),
@@ -113,15 +115,16 @@ async def main():
         BotCommand(command="/users", description="Управление пользователями"),
         BotCommand(command="/gpt_init", description="Инициализировать таблицу памяти GPT"),
         BotCommand(command="/generate", description="Сгенерировать изображение по запросу"),
+        # Пример добавления команды Tarot (если вы добавляли handlers/taro_module.py):
         BotCommand(command="/tarot", description="Вытянуть 3 карты Таро Манара")
     ]
     await bot.set_my_commands(commands)
     logger.info("Команды бота успешно установлены.")
 
-    # Удаляем webhook (если установлен) и запускаем polling
+    # 9) Удаляем webhook (если был) и запускаем polling
     logger.debug("Удаление webhook (если установлен)...")
     await bot.delete_webhook(drop_pending_updates=True)
-    logger.info("Webhook удалён. Ждем 2 секунды...")
+    logger.info("Webhook удалён. Ждём 2 секунды...")
     await asyncio.sleep(2)
 
     logger.info("Запуск polling для получения обновлений от Telegram...")
