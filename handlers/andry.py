@@ -192,12 +192,10 @@ async def on_text(message: Message):
         status_line = "💰 Баланс уменьшен!"
         change_text = f"➖ Снятие: {abs(delta):,.0f} ¥"
     msg_text = (
-        f"<pre>\n"
         f"{status_line}\n"
         f"📈 Было: {old_balance:,.0f} ¥\n"
         f"{change_text}\n"
         f"💎 Итоговый баланс: {new_balance:,.0f} ¥\n"
-        f"</pre>"
     )
     await message.answer(msg_text)
     await send_financial_report(message.bot)
