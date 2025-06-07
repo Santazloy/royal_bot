@@ -23,7 +23,7 @@ from handlers.menu_ad import menu_ad_router
 from handlers.users import users_router
 from handlers.leonard import leonard_menu_router
 from handlers.file import router as file_router
-# from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
+#from handlers.gpt import router as gpt_router, on_startup as gpt_on_startup
 from handlers.ai import router as ai_router
 from handlers.rules import router as rules_router
 from handlers.exchange import router as exchange_router
@@ -65,22 +65,18 @@ async def main():
     dp = Dispatcher(storage=storage)
 
     # 5) Регистрируем on_startup-хендлер GPT (если нужен)
-    # dp.startup.register(gpt_on_startup)
+    #dp.startup.register(gpt_on_startup)
 
     # 6) Подключаем роутеры в нужном порядке:
     logger.debug("Подключение роутеров...")
 
-    # ─────── сначала «точечные» роутеры, которые не ловят свободный текст:
+    # ─────── дальше все остальные — только после booking/andry:
     dp.include_router(language_router)
     dp.include_router(next_router)
     dp.include_router(group_id_router)
     dp.include_router(idphoto_router)
     dp.include_router(startemoji_router)
-
-    # ─────── затем **booking_router** (FSM-flow бронирования):
     dp.include_router(booking_router)
-    dp.include_router(andry_router)
-    # ─────── дальше идут остальные «общие» роутеры:
     dp.include_router(salary_router)
     dp.include_router(leonard_menu_router)
     dp.include_router(rules_router)
@@ -92,7 +88,9 @@ async def main():
     dp.include_router(menu_ad_router)
     dp.include_router(menu_router)
     dp.include_router(file_router)
-    # dp.include_router(gpt_router)  # если нужен роутер GPT
+    #dp.include_router(gpt_router)
+    dp.include_router(andry_router)  # В САМОМ КОНЦЕ!
+
     logger.info("Все роутеры успешно подключены.")
 
     # 7) Регистрируем планировщик (из handlers/next.py)

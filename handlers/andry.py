@@ -7,7 +7,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InputFile
+from aiogram.types import Message, InputFile
 from aiogram.filters import Command
 from config import FIN_GROUP_IDS, ADMIN_IDS
 import db
@@ -159,18 +159,14 @@ async def on_one(message: Message):
 
 @router.message(Command("seven"))
 async def on_seven(message: Message):
-    # Аналогично реализуй недельный отчёт
     pass
 
 @router.message(Command("threeten"))
 async def on_threeten(message: Message):
-    # Аналогично реализуй месячный отчёт
     pass
 
-@router.message()
+@router.message(F.chat.id.in_(FIN_GROUP_IDS) & F.text.regexp(r'^([+-])\s?\d+$'))
 async def on_text(message: Message):
-    if message.chat.id not in FIN_GROUP_IDS:
-        return
     text = (message.text or "").strip()
     match = TRANSACTION_PATTERN.match(text)
     if not match:
@@ -201,6 +197,5 @@ async def on_text(message: Message):
     await send_financial_report(message.bot)
 
 async def send_financial_report(bot):
-    # Импортировать и вызывать из handlers/money.py send_financial_report(bot)
     from handlers.money import send_financial_report as send_fin
     await send_fin(bot)
