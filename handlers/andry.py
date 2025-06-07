@@ -1,5 +1,8 @@
 import re
 import logging
+import os
+import tempfile
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import matplotlib
@@ -7,7 +10,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from aiogram import Router, F
-from aiogram.types import Message, InputFile
+from aiogram.types import Message
+from aiogram.types import FSInputFile
 from aiogram.filters import Command
 from config import FIN_GROUP_IDS, ADMIN_IDS
 import db
@@ -128,7 +132,7 @@ async def generate_charts_example(pool, chat_id: int):
                 color=['green' if bc >= 0 else 'red' for bc in balance_changes])
     axes[2].set_title("Изменение баланса")
     plt.tight_layout()
-    chart_file = "charts_example.png"
+    chart_file = os.path.join(tempfile.gettempdir(), f"charts_{uuid.uuid4()}.png")
     plt.savefig(chart_file)
     plt.close(fig)
     return chart_file
@@ -154,7 +158,8 @@ async def on_one(message: Message):
     )
     await message.answer(text)
     chart_file = await generate_charts_example(db.db_pool, message.chat.id)
-    await message.answer_photo(InputFile(chart_file), caption="Пример графиков за 7 дней (UTC)")
+    await message.answer_photo(FSInputFile(chart_file), caption="Пример графиков за 7 дней (UTC)")
+    os.remove(chart_file)
     await send_financial_report(message.bot)
 
 @router.message(Command("seven"))
