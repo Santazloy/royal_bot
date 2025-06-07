@@ -144,7 +144,6 @@ async def on_one(message: Message):
     net_sign = "+" if stats['net_result'] >= 0 else ""
     net_str = f"{net_sign}{stats['net_result']:,.0f} ¥"
     text = (
-        f"<pre>\n"
         f"📅 Итоги дня (UTC) ({day_str})\n"
         f"💳 Было: {stats['start_balance']:,.0f} ¥\n"
         f"💰 Заработано: {plus_str}\n"
@@ -152,7 +151,6 @@ async def on_one(message: Message):
         f"📊 Чистый результат: {net_str}\n"
         f"🏆 Баланс сейчас: {stats['current_balance']:,.0f} ¥\n"
         f"🚀 Завтра сделаем ещё больше!\n"
-        f"</pre>"
     )
     await message.answer(text)
     chart_file = await generate_charts_example(db.db_pool, message.chat.id)
