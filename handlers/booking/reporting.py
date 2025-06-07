@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
+from config import FIN_GROUP_IDS, ADMIN_IDS, FINANCIAL_REPORT_GROUP_ID
 import logging, html
 from handlers.language import get_user_language, get_message
 import db
@@ -16,6 +16,7 @@ from constants.booking_const import (
 from utils.text_utils import format_html_pre
 from utils.time_utils import generate_daily_time_slots as generate_time_slots
 from aiogram import Router
+
 router = Router()
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,6 @@ async def update_group_message(bot: Bot, group_key: str):
                 msg.message_id, group_key
             )
 
-
 async def send_financial_report(bot: Bot):
     if not db.db_pool:
         return
@@ -122,6 +122,21 @@ async def send_financial_report(bot: Bot):
     async with db.db_pool.acquire() as conn:
         rows = await conn.fetch("SELECT balance FROM users")
     users_total = sum(r["balance"] for r in rows) if rows else 0
+
+    # ——— ДОБАВЛЯЕМ ФИНАНСОВЫЕ ГРУППЫ В СПИСОК ПОЛЬЗОВАТЕЛЕЙ ———
+    async with db.db_pool.acquire() as conn:
+        fin_group_rows = []
+        for group_id in FIN_GROUP_IDS:
+            row = await conn.fetchrow(
+                "SELECT balance FROM balances WHERE chat_id=$1", group_id)
+            fin_group_rows.append({"user_id": group_id, "username": f"Group {group_id}", "balance": row["balance"] if row else 0, "emojis": "🏦"})
+
+        user_rows = await conn.fetch("""
+            SELECT u.user_id, u.username, u.balance, e.emojis
+            FROM users u LEFT JOIN user_emojis e ON u.user_id=e.user_id
+            ORDER BY u.user_id
+        """)
+    all_rows = list(user_rows) + fin_group_rows
 
     itog1 = total_cash - total_sal
     lines = ["═══ 📊 Сводный фин. отчёт 📊 ═══\n"]
@@ -134,16 +149,9 @@ async def send_financial_report(bot: Bot):
         f"Итог1 (cash - salary): {itog1}¥",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     ]
-
-    async with db.db_pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT u.user_id, u.username, u.balance, e.emojis
-            FROM users u LEFT JOIN user_emojis e ON u.user_id=e.user_id
-            ORDER BY u.user_id
-        """)
-    if rows:
+    if all_rows:
         lines.append("═════ 👥 Пользователи 👥 ═════\n")
-        for r in rows:
+        for r in all_rows:
             emoji = r.get("emojis") or "❓"
             uname = r["username"] or f"User {r['user_id']}"
             balance = r["balance"]
@@ -160,7 +168,6 @@ async def send_financial_report(bot: Bot):
         await bot.send_message(FINANCIAL_REPORT_GROUP_ID, report, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Ошибка фин. отчёта: {e}")
-
 
 @router.callback_query(F.data == "view_all_bookings")
 async def cmd_all(cb: CallbackQuery):

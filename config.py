@@ -41,3 +41,7 @@ def is_user_admin(user_id: int) -> bool:
     print("Checking user_id:", user_id, "type:", type(user_id))
     print("Result:", int(user_id) in ADMIN_IDS)
     return int(user_id) in ADMIN_IDS
+
+# Список групп, куда шлём финансовые отчёты (через FIN_GROUP_IDS в .env, разделитель — запятая)
+_fin = os.getenv("FIN_GROUP_IDS", "")
+FIN_GROUP_IDS = [int(x) for x in _fin.split(",") if x.strip().startswith("-") and x.strip()[1:].isdigit()]

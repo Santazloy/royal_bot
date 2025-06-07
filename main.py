@@ -28,7 +28,7 @@ from handlers.ai import router as ai_router
 from handlers.rules import router as rules_router
 from handlers.exchange import router as exchange_router
 from handlers.next import router as next_router, register_daily_scheduler
-
+from handlers.andry import router as andry_router
 from db_access.booking_repo import BookingRepo
 
 async def main():
@@ -79,7 +79,7 @@ async def main():
 
     # ─────── затем **booking_router** (FSM-flow бронирования):
     dp.include_router(booking_router)
-
+    dp.include_router(andry_router)
     # ─────── дальше идут остальные «общие» роутеры:
     dp.include_router(salary_router)
     dp.include_router(leonard_menu_router)
