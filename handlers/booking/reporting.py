@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import FIN_GROUP_IDS, ADMIN_IDS, FINANCIAL_REPORT_GROUP_ID
+from config import is_user_admin, FIN_GROUP_IDS, FINANCIAL_REPORT_GROUP_ID
 import logging, html
 from handlers.language import get_user_language, get_message
 import db
@@ -171,8 +171,14 @@ async def send_financial_report(bot: Bot):
 
 @router.callback_query(F.data == "view_all_bookings")
 async def cmd_all(cb: CallbackQuery):
-    lang = await get_user_language(cb.from_user.id)
+    # 1) Ограничиваем только админам
+    if not is_user_admin(cb.from_user.id):
+        return await cb.answer(
+            "⚠️ У вас нет прав для выполнения этого действия",
+            show_alert=True
+        )
 
+    lang = await get_user_language(cb.from_user.id)
     group_times = {}
     for gk, g in groups_data.items():
         for d in ("Сегодня", "Завтра"):
@@ -188,6 +194,7 @@ async def cmd_all(cb: CallbackQuery):
             await safe_delete_and_answer(cb.message, text)
         return await cb.answer()
 
+    # остальной код как было...
     lines = []
     for day in ("Сегодня", "Завтра"):
         disp = get_message(lang, "today") if day == "Сегодня" else get_message(lang, "tomorrow")
@@ -203,7 +210,7 @@ async def cmd_all(cb: CallbackQuery):
         ]
         for gk, td in group_times.items():
             for s in td.get(day, []):
-                emoji = groups_data[gk].get("slot_emojis", {}).get((day, s), "❓")
+                emoji = groups_data[gk].get("slot_emojis",{}).get((day, s), "❓")
                 lines.append(f"║ {gk:<9}║ {s:<18}║ {emoji}")
             lines.append("╠══════════╬════════════════════╣")
         lines[-1] = lines[-1].replace("╠", "╚", 1).replace("╣", "╝", 1)
@@ -215,7 +222,6 @@ async def cmd_all(cb: CallbackQuery):
     except TelegramBadRequest:
         await safe_delete_and_answer(cb.message, text)
     await cb.answer()
-
 
 async def safe_delete_and_answer(msg: Message, text: str):
     try:

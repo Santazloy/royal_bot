@@ -1,4 +1,5 @@
 # handlers/salary.py
+
 import logging
 
 from aiogram import Router, F
@@ -23,7 +24,6 @@ from utils.bot_utils import safe_answer  # общая функция для уд
 logger = logging.getLogger(__name__)
 salary_router = Router()
 
-# Uniform photo for all salary messages
 SALARY_PHOTO = "photo/IMG_2585.JPG"
 
 
@@ -63,7 +63,12 @@ async def load_salary_data_from_db():
 async def _salary_init(entry: Message | CallbackQuery, state: FSMContext):
     lang = await get_user_language(entry.from_user.id)
     if not is_user_admin(entry.from_user.id):
-        return await safe_answer(entry, get_message(lang, "admin_only"), show_alert=True)
+        if isinstance(entry, CallbackQuery):
+            return await entry.answer(
+                "⚠️ У вас нет прав для выполнения этого действия",
+                show_alert=True
+            )
+        return
 
     # Шаг 1: выбор группы
     keys = list(groups_data.keys())
@@ -78,7 +83,6 @@ async def _salary_init(entry: Message | CallbackQuery, state: FSMContext):
     )
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    # Отправляем меню выбора группы вместе с фото
     await safe_answer(
         entry,
         photo=SALARY_PHOTO,
@@ -90,11 +94,18 @@ async def _salary_init(entry: Message | CallbackQuery, state: FSMContext):
 
 @salary_router.message(Command("salary"))
 async def salary_command(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        return
     await _salary_init(message, state)
 
 
 @salary_router.callback_query(F.data == "salary")
 async def salary_via_button(cb: CallbackQuery, state: FSMContext):
+    if not is_user_admin(cb.from_user.id):
+        return await cb.answer(
+            "⚠️ У вас нет прав для выполнения этого действия",
+            show_alert=True
+        )
     await _salary_init(cb, state)
     await cb.answer()
 
@@ -106,16 +117,21 @@ async def salary_via_button(cb: CallbackQuery, state: FSMContext):
 async def process_group(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     if not is_user_admin(callback.from_user.id):
-        return await callback.answer(get_message(lang, "admin_only"), show_alert=True)
+        return await callback.answer(
+            "⚠️ У вас нет прав для выполнения этого действия",
+            show_alert=True
+        )
 
     group = callback.data.removeprefix("salary_group_")
     if group not in groups_data:
-        return await callback.answer(get_message(lang, "no_such_group"), show_alert=True)
+        return await callback.answer(
+            get_message(lang, "no_such_group"),
+            show_alert=True
+        )
 
     await state.update_data(selected_group=group)
     current = groups_data[group].get("salary_option", 1)
 
-    # Шаг 2: выбор опции (1–4)
     opts = []
     for opt in (1, 2, 3, 4):
         mark = "✅" if opt == current else "   "
@@ -142,16 +158,21 @@ async def process_group(callback: CallbackQuery, state: FSMContext):
 async def process_option(callback: CallbackQuery, state: FSMContext):
     lang = await get_user_language(callback.from_user.id)
     if not is_user_admin(callback.from_user.id):
-        return await callback.answer(get_message(lang, "admin_only"), show_alert=True)
+        return await callback.answer(
+            "⚠️ У вас нет прав для выполнения этого действия",
+            show_alert=True
+        )
 
     opt = int(callback.data.removeprefix("salary_opt_"))
     data = await state.get_data()
     group = data.get("selected_group")
     if group not in groups_data or opt not in salary_options:
         await state.clear()
-        return await callback.answer(get_message(lang, "invalid_data"), show_alert=True)
+        return await callback.answer(
+            get_message(lang, "invalid_data"),
+            show_alert=True
+        )
 
-    # Save new selection
     groups_data[group]["salary_option"] = opt
     if db.db_pool:
         async with db.db_pool.acquire() as conn:
@@ -169,15 +190,13 @@ async def process_option(callback: CallbackQuery, state: FSMContext):
             )
 
     await state.clear()
-
-    # Send confirmation (no keyboard)
     await safe_answer(
         callback,
         get_message(lang, "salary_set", group=group, opt=opt),
         parse_mode="HTML"
     )
-    # close the “loading” spinner
     await callback.answer()
+
 
 @salary_router.callback_query(
     F.data == "salary_cancel",
@@ -189,4 +208,7 @@ async def process_cancel(callback: CallbackQuery, state: FSMContext):
         await callback.message.delete()
     except:
         pass
-    await callback.answer(get_message(await get_user_language(callback.from_user.id), "cancelled"))
+    await callback.answer(
+        get_message(await get_user_language(callback.from_user.id), "cancelled"),
+        show_alert=True
+    )

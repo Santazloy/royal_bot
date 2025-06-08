@@ -1,5 +1,5 @@
 import logging
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters.command import Command
 from aiogram.fsm.context import FSMContext
@@ -17,10 +17,10 @@ from handlers.money import money_command
 from handlers.booking.cancelbook import cmd_off_admin
 from handlers.leonard import leonard_menu_callback
 from handlers.users import show_users_via_callback
+from handlers.next import prompt_reset_day
 
-# Импорт нашего нового хендлера "reset day"
-from handlers.next import callback_reset_day, cmd_next
-
+logger = logging.getLogger(__name__)
+menu_ad_router = Router()
 last_admin_menu_message: dict[int, int] = {}
 
 PHOTO_ID = "photo/IMG_2585.JPG"
@@ -38,37 +38,20 @@ EMOJI_MAP = {
     "back":       "🔙",
 }
 
-logger = logging.getLogger(__name__)
-menu_ad_router = Router()
+# 1) Callback от не-админа — только alert
+@menu_ad_router.callback_query(lambda cb: not is_user_admin(cb.from_user.id))
+async def _deny_non_admin_cb(cb: CallbackQuery):
+    await cb.answer("⚠️ У вас нет прав для выполнения этого действия", show_alert=True)
 
+# 2) /ad от не-админа — тихий отказ
+@menu_ad_router.message(lambda m: not is_user_admin(m.from_user.id), Command("ad"))
+async def _deny_ad_cmd(message: Message):
+    return
 
-def build_admin_menu_keyboard(lang: str):
-    buttons = [
-        (get_message(lang, "menu_leonard",      default="Леонард"),      "leonard"),
-        (get_message(lang, "btn_salary",        default="Зарплата"),     "salary"),
-        (get_message(lang, "btn_emoji",         default="Эмодзи"),       "emoji"),
-        (get_message(lang, "btn_money",         default="Деньги"),       "money"),
-        (get_message(lang, "btn_cancel_booking",default="Отмена брони"), "offad"),
-        (get_message(lang, "btn_clean",         default="Очистка"),      "clean"),
-        (get_message(lang, "btn_balances",      default="Балансы"),      "balances"),
-        (get_message(lang, "btn_rules",         default="Правила"),      "rules"),
-        (get_message(lang, "btn_conversion",    default="Конвертация"),  "conversion"),
-        (get_message(lang, "btn_reset_day",     default="Сброс дня"),    "reset_day"),
-        (get_message(lang, "btn_back",          default="« Назад"),      "back"),
-    ]
-    builder = InlineKeyboardBuilder()
-    for text, data in buttons:
-        emoji = EMOJI_MAP.get(data, "")
-        builder.button(text=f"{emoji} {text}", callback_data=data)
-    builder.adjust(2)
-    return builder.as_markup()
-
-
+# 3) /ad — только для админов
 @menu_ad_router.message(Command("ad"))
 async def show_admin_menu(message: Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
-    if not is_user_admin(message.from_user.id):
-        return await safe_answer(message, get_message(lang, "admin_only"))
     chat_id = message.chat.id
     prev_id = last_admin_menu_message.get(chat_id)
     if prev_id:
@@ -77,76 +60,72 @@ async def show_admin_menu(message: Message, state: FSMContext):
         except:
             pass
 
-    kb = build_admin_menu_keyboard(lang)
+    buttons = [
+        (get_message(lang, "menu_leonard", default="Леонард"),      "leonard"),
+        (get_message(lang, "btn_salary",   default="Зарплата"),     "salary"),
+        (get_message(lang, "btn_emoji",    default="Эмодзи"),       "emoji"),
+        (get_message(lang, "btn_money",    default="Деньги"),       "money"),
+        (get_message(lang, "btn_cancel_booking", default="Отмена брони"), "offad"),
+        (get_message(lang, "btn_clean",    default="Очистка"),      "clean"),
+        (get_message(lang, "btn_balances", default="Балансы"),      "balances"),
+        (get_message(lang, "btn_rules",    default="Правила"),      "rules"),
+        (get_message(lang, "btn_conversion", default="Конвертация"), "conversion"),
+        (get_message(lang, "btn_reset_day", default="Сброс дня"),    "reset_day"),
+        (get_message(lang, "btn_back",     default="« Назад"),      "back"),
+    ]
+    builder = InlineKeyboardBuilder()
+    for text, data in buttons:
+        emoji = EMOJI_MAP.get(data, "")
+        builder.button(text=f"{emoji} {text}", callback_data=data)
+    markup = builder.adjust(2).as_markup()
+
     sent = await safe_answer(
         message,
         photo=PHOTO_ID,
         caption=get_message(lang, "menu_admin_header", default="Меню администратора:"),
-        reply_markup=kb,
+        reply_markup=markup,
     )
     last_admin_menu_message[chat_id] = sent.message_id
     await state.set_state(AdminStates.menu)
 
+# 4) Обработчик нажатий админ-меню — только админам
 @menu_ad_router.callback_query(AdminStates.menu)
 async def admin_menu_callback(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
-    action = callback.data
-
-    # Игнорируем нашу же кнопку
     me = await callback.bot.get_me()
     if callback.from_user.id == me.id:
         return
 
-    # Проверка прав
-    if not is_user_admin(callback.from_user.id):
-        return await safe_answer(callback, get_message(lang, "admin_only"), show_alert=True)
+    lang = await get_user_language(callback.from_user.id)
+    action = callback.data
 
-    # Леонард
     if action == "leonard":
         return await leonard_menu_callback(callback, state)
-
-    # Зарплата
     if action == "salary":
         return await salary_command(callback.message, state)
-
-    # Эмодзи
     if action == "emoji":
         return await cmd_emoji(callback, callback.bot)
-
-    # Деньги
     if action == "money":
         return await money_command(callback.message, state)
-
-    # Отмена чужих бронирований
     if action == "offad":
         return await cmd_off_admin(callback.message)
-
-    # Очистка
     if action == "clean":
         return await clean_via_button(callback, state)
-
-    # Список балансов пользователей
     if action == "balances":
         return await show_users_via_callback(callback, state)
-
-    # Правила (отправляем два сообщения)
     if action == "rules":
         from handlers.rules import callback_rules
         return await callback_rules(callback)
-
-    # Конвертация (валютный калькулятор)
     if action == "conversion":
         from handlers.exchange import callback_conversion
         return await callback_conversion(callback, state)
 
-    # Сброс дня
     if action == "reset_day":
-        return await callback_reset_day(callback, state)
+        return await prompt_reset_day(callback)
 
-    # Назад (выход из админ-меню)
     if action == "back":
         await safe_answer(callback, get_message(lang, "menu_back_confirm", default="Выход из админ-меню."))
         return await state.clear()
 
-    # Любая другая неизвестная кнопка
-    return await safe_answer(callback, get_message(lang, "menu_unknown_command", default="Неизвестная команда."))
+    return await safe_answer(
+        callback, get_message(lang, "menu_unknown_command", default="Неизвестная команда.")
+    )
